@@ -1,0 +1,51 @@
+[
+  {
+    "id": 1,
+    "topic": "snake bite treatment first aid",
+    "tags": ["medical", "venom", "first aid", "poison", "saanp", "katna"],
+    "keywords": ["snake", "bite", "saanp", "venom", "fang", "wound", "kaat", "zeher", "serpent", "emergency", "ilaj", "treatment"],
+    "content": "सांप काटने पर मरीज को बिल्कुल शांत रखें और हिलने-डुलने न दें। काटे गए अंग को दिल के स्तर से नीचे रखें। घाव को काटें नहीं, चूसें नहीं और न ही बर्फ या टाइट पट्टी बांधें। मरीज को तुरंत नजदीकी अस्पताल या डॉक्टर के पास ले जाएं।"
+  },
+  {
+    "id": 2,
+    "topic": "burns first aid",
+    "tags": ["medical", "fire", "first aid", "jala", "jalan", "aag"],
+    "keywords": ["burn", "burns", "fire", "aag", "jala", "jalan", "heat", "blister", "scald", "cloth", "ilaj"],
+    "content": "जलने पर तुरंत 15 से 20 मिनट तक साफ और ठंडे पानी की धार के नीचे रखें। जले पर टूथपेस्ट, तेल, मक्खन या बर्फ बिल्कुल न लगाएं। घाव को साफ व सूखे कपड़े से ढीला ढकें और तुरंत डॉक्टर को दिखाएं।"
+  },
+  {
+    "id": 3,
+    "topic": "fracture and bone injury",
+    "tags": ["medical", "bone", "injury", "haddi", "chot", "toot"],
+    "keywords": ["fracture", "leg", "arm", "bone", "haddi", "toot", "splint", "broken", "injury", "chot", "dard", "fall"],
+    "content": "हड्डी टूटने (फ्रैक्चर) पर घायल अंग को सीधा करने या हिलाने की कोशिश न करें। किसी मजबूत लकड़ी या गत्ते की पट्टी (Splint) बनाकर कपड़े से बांधें ताकि अंग हिले नहीं। सूजन कम करने के लिए कपड़े में लपेटकर बर्फ लगाएं और तुरंत अस्पताल ले जाएं।"
+  },
+  {
+    "id": 4,
+    "topic": "severe bleeding and wounds",
+    "tags": ["medical", "blood", "wound", "khoon", "cut", "ghav"],
+    "keywords": ["bleeding", "blood", "khoon", "cut", "wound", "ghav", "bandage", "patti", "pressure", "hemorrhage"],
+    "content": "खून बहने पर साफ कपड़े या पट्टी से घाव पर 5 मिनट तक लगातार दबाकर रखें। अगर संभव हो तो चोट वाले हिस्से को दिल से ऊपर उठाएं। पट्टी भीग जाए तो उसे हटाएं नहीं, उसके ऊपर और कपड़ा बांधें।"
+  },
+  {
+    "id": 5,
+    "topic": "cpr and unconsciousness",
+    "tags": ["medical", "cpr", "breathing", "behosh"],
+    "keywords": ["cpr", "unconscious", "behosh", "breathing", "heart", "chest compressions", "choking", "pulse", "breath"],
+    "content": "अगर कोई व्यक्ति बेहोश है और सांस नहीं ले रहा, तो छाती के बीच में दोनों हाथों से प्रति मिनट 100 से 120 बार तेजी और मजबूती से छाती दबाएं (CPR दें)। जब तक होश न आए या एम्बुलेंस न पहुंचे, छाती दबाना जारी रखें।"
+  },
+  {
+    "id": 6,
+    "topic": "water contamination and diarrhea",
+    "tags": ["medical", "water", "infection", "ors", "paani", "dast"],
+    "keywords": ["diarrhea", "vomiting", "stomach", "dehydration", "ors", "waterborne", "infection", "dawa", "cholera", "dast"],
+    "content": "पीने के पानी को कम से कम 1 मिनट तक उबालें। डिहाइड्रेशन (पानी की कमी) से बचने के लिए ओआरएस (ORS) घोल पिएं या 1 लीटर साफ पानी में 6 चम्मच चीनी और आधा चम्मच नमक मिलाकर लगातार देते रहें।"
+  },
+  {
+    "id": 7,
+    "topic": "hospital emergency care and doctor clinic",
+    "tags": ["medical", "hospital", "doctor", "clinic", "aspataal", "first aid", "dawa"],
+    "keywords": ["hospital", "aspataal", "doctor", "clinic", "first aid", "dawa", "medical", "treatment", "ilaj", "ambulance", "emergency room", "nurse"],
+    "content": "जिला मुख्य अस्पताल (District Hospital) हाईवे कॉरिडोर से 3.0 किमी उत्तर-पूर्व में 24 घंटे खुला है। आपातकालीन मोबाइल फर्स्ट-एड क्लिनिक चौराहा नंबर 12 (लाल टेंट, 800 मीटर उत्तर) पर डॉक्टरों की टीम के साथ मौजूद है।"
+  }
+]

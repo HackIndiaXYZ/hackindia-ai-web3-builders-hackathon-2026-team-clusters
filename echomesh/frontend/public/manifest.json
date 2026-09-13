@@ -1,0 +1,19 @@
+{
+  "short_name": "EchoMesh",
+  "name": "EchoMesh — Offline Disaster Response AI & SOS",
+  "description": "0KB Internet Offline Disaster AI Mesh, Voice Assistant & Tactical SOS Radar",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#060a14",
+  "theme_color": "#060a14",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "scope": "/"
+}

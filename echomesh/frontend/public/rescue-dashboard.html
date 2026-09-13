@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EchoMesh — Rescue Dashboard</title>
+  <style>
+    :root {
+      --bg: #060a14;
+      --surface: #0f1629;
+      --card: #141d30;
+      --border: #1e293b;
+      --red: #ef4444;
+      --red-dim: rgba(239, 68, 68, 0.15);
+      --green: #22c55e;
+      --green-dim: rgba(34, 197, 94, 0.1);
+      --cyan: #06b6d4;
+      --amber: #f59e0b;
+      --white: #f1f5f9;
+      --secondary: #94a3b8;
+      --dim: #475569;
+      --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      --mono: 'Consolas', 'Courier New', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      font-family: var(--font);
+      color: var(--white);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-left h1 {
+      font-size: 18px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-left .tag {
+      font-size: 10px;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--cyan);
+      background: rgba(6, 182, 212, 0.1);
+      border: 1px solid rgba(6, 182, 212, 0.2);
+      padding: 3px 10px;
+      border-radius: 100px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--dim);
+      font-family: var(--mono);
+    }
+
+    .live-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      display: inline-block;
+      animation: livePulse 2s ease-in-out infinite;
+    }
+
+    /* ── Stats Bar ── */
+    .stats-bar {
+      display: flex;
+      gap: 16px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-wrap: wrap;
+    }
+
+    .stat {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+    }
+
+    .stat .num {
+      font-size: 22px;
+      font-weight: 800;
+    }
+    .stat .lbl {
+      font-size: 11px;
+      color: var(--dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .stat.active .num { color: var(--red); }
+    .stat.resolved .num { color: var(--green); }
+    .stat.total .num { color: var(--cyan); }
+
+    /* ── Content ── */
+    .content {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--dim);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title .count {
+      background: var(--red-dim);
+      color: var(--red);
+      padding: 2px 8px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .section-title .count.resolved-count {
+      background: var(--green-dim);
+      color: var(--green);
+    }
+
+    /* ── SOS Card ── */
+    .sos-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 12px;
+      transition: all 0.2s ease;
+      animation: cardIn 0.3s ease-out;
+    }
+
+    .sos-card.active-card {
+      border-left: 3px solid var(--red);
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.08);
+    }
+
+    .sos-card.resolved-card {
+      border-left: 3px solid var(--green);
+      opacity: 0.6;
+    }
+
+    .sos-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 12px;
+    }
+
+    .sos-card-header .person {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sos-avatar {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--red-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--red);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      flex-shrink: 0;
+    }
+
+    .resolved-card .sos-avatar {
+      background: var(--green-dim);
+      color: var(--green);
+      border-color: rgba(34, 197, 94, 0.2);
+    }
+
+    .person-name {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .person-time {
+      font-size: 11px;
+      color: var(--dim);
+      font-family: var(--mono);
+    }
+
+    .sos-badge {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 4px 10px;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+
+    .sos-badge.active-badge {
+      background: var(--red-dim);
+      color: var(--red);
+      animation: badgePulse 2s ease-in-out infinite;
+    }
+
+    .sos-badge.resolved-badge {
+      background: var(--green-dim);
+      color: var(--green);
+    }
+
+    .sos-card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .sos-message {
+      font-size: 13px;
+      color: var(--secondary);
+      line-height: 1.5;
+    }
+
+    .sos-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--dim);
+    }
+
+    .meta-item a {
+      color: var(--cyan);
+      text-decoration: none;
+    }
+    .meta-item a:hover {
+      text-decoration: underline;
+    }
+
+    .sos-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .resolve-btn {
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      background: var(--green-dim);
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .resolve-btn:hover {
+      background: rgba(34, 197, 94, 0.2);
+      border-color: var(--green);
+    }
+
+    .resolve-btn:active {
+      transform: scale(0.96);
+    }
+
+    /* ── Empty state ── */
+    .empty {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--dim);
+    }
+    .empty .icon { font-size: 36px; margin-bottom: 12px; }
+    .empty .msg { font-size: 14px; }
+
+    /* ── Resolved collapse ── */
+    .resolved-section {
+      margin-top: 32px;
+    }
+
+    .collapse-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      transition: all 0.15s ease;
+    }
+    .collapse-toggle:hover {
+      border-color: var(--dim);
+      color: var(--secondary);
+    }
+
+    .collapse-content {
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+
+    .collapse-content.collapsed {
+      max-height: 0;
+    }
+
+    .collapse-content.expanded {
+      max-height: 5000px;
+    }
+
+    /* ── Animations ── */
+    @keyframes livePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
+      50% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+    }
+
+    @keyframes badgePulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .header { padding: 12px 16px; }
+      .stats-bar { padding: 12px 16px; gap: 8px; }
+      .stat { padding: 6px 12px; }
+      .stat .num { font-size: 18px; }
+      .content { padding: 16px; }
+      .sos-card { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>🚨 Rescue Dashboard</h1>
+      <span class="tag">EchoMesh</span>
+    </div>
+    <div class="header-right">
+      <span><span class="live-dot"></span> &nbsp;Live</span>
+      <span id="lastUpdate">Updating...</span>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar">
+    <div class="stat active">
+      <span class="num" id="activeCount">0</span>
+      <span class="lbl">Active</span>
+    </div>
+    <div class="stat resolved">
+      <span class="num" id="resolvedCount">0</span>
+      <span class="lbl">Resolved</span>
+    </div>
+    <div class="stat total">
+      <span class="num" id="totalCount">0</span>
+      <span class="lbl">Total</span>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+    <!-- Active SOS alerts -->
+    <div id="activeSection"></div>
+
+    <!-- Resolved section -->
+    <div id="resolvedSection" class="resolved-section" style="display:none;"></div>
+  </div>
+
+<script>
+// ══════════════════════════════════════════════
+//  DYNAMIC ROUTER URL (Works on port 4000 / 5173 / Mobile)
+// ══════════════════════════════════════════════
+const ROUTER_URL = window.location.port === '4000'
+  ? '' 
+  : window.location.protocol + '//' + window.location.hostname + ':4000';
+
+let resolvedExpanded = false;
+
+// ── Poll ──
+async function fetchAlerts() {
+  try {
+    const res = await fetch(`${ROUTER_URL}/sos-list`);
+    const data = await res.json();
+    renderActive(data.active);
+    renderResolved(data.resolved);
+    document.getElementById('activeCount').textContent = data.active.length;
+    document.getElementById('resolvedCount').textContent = data.resolved.length;
+    document.getElementById('totalCount').textContent = data.total;
+    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById('lastUpdate').textContent = 'Connection lost';
+  }
+}
+
+// ── Render Active ──
+function renderActive(alerts) {
+  const section = document.getElementById('activeSection');
+
+  if (alerts.length === 0) {
+    section.innerHTML = `
+      <div class="empty">
+        <div class="icon">✅</div>
+        <div class="msg">No active SOS alerts</div>
+      </div>
+    `;
+    return;
+  }
+
+  let html = `
+    <div class="section-title">
+      🔴 Active Alerts <span class="count">${alerts.length}</span>
+    </div>
+  `;
+
+  alerts.forEach(a => {
+    html += renderCard(a, true);
+  });
+
+  section.innerHTML = html;
+}
+
+// ── Render Resolved ──
+function renderResolved(alerts) {
+  const section = document.getElementById('resolvedSection');
+
+  if (alerts.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+
+  const contentClass = resolvedExpanded ? 'expanded' : 'collapsed';
+  const arrow = resolvedExpanded ? '▲' : '▼';
+
+  let html = `
+    <button class="collapse-toggle" onclick="toggleResolved()">
+      <span>✅ Resolved (${alerts.length})</span>
+      <span>${arrow}</span>
+    </button>
+    <div class="collapse-content ${contentClass}">
+  `;
+
+  alerts.forEach(a => {
+    html += renderCard(a, false);
+  });
+
+  html += `</div>`;
+  section.innerHTML = html;
+}
+
+// ── Render single card ──
+function renderCard(alert, isActive) {
+  const initials = alert.deviceName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+  const timeAgo = getTimeAgo(alert.timestamp);
+  const cardClass = isActive ? 'active-card' : 'resolved-card';
+  const badgeClass = isActive ? 'active-badge' : 'resolved-badge';
+  const badgeText = isActive ? '🔴 ACTIVE' : '✅ RESOLVED';
+
+  let locationHtml = '<span class="meta-item">📍 No location</span>';
+  if (alert.latitude && alert.longitude) {
+    const mapsUrl = `https://www.google.com/maps?q=${alert.latitude},${alert.longitude}`;
+    locationHtml = `
+      <span class="meta-item">
+        📍 <a href="${mapsUrl}" target="_blank" rel="noopener">${alert.latitude.toFixed(4)}, ${alert.longitude.toFixed(4)}</a>
+      </span>
+    `;
+  }
+
+  let actionsHtml = '';
+  if (isActive) {
+    actionsHtml = `
+      <div class="sos-actions">
+        <button class="resolve-btn" onclick="resolveAlert(${alert.id})">✅ Mark Resolved</button>
+      </div>
+    `;
+  }
+
+  let resolvedTime = '';
+  if (!isActive && alert.resolvedAt) {
+    resolvedTime = `<span class="meta-item">🕐 Resolved ${getTimeAgo(alert.resolvedAt)}</span>`;
+  }
+
+  return `
+    <div class="sos-card ${cardClass}">
+      <div class="sos-card-header">
+        <div class="person">
+          <div class="sos-avatar">${initials}</div>
+          <div>
+            <div class="person-name">${escapeHtml(alert.deviceName)}</div>
+            <div class="person-time">${timeAgo}</div>
+          </div>
+        </div>
+        <span class="sos-badge ${badgeClass}">${badgeText}</span>
+      </div>
+      <div class="sos-card-body">
+        <div class="sos-message">${escapeHtml(alert.message)}</div>
+        <div class="sos-meta">
+          ${locationHtml}
+          <span class="meta-item">🆔 #${alert.id}</span>
+          ${resolvedTime}
+        </div>
+        ${actionsHtml}
+      </div>
+    </div>
+  `;
+}
+
+// ── Resolve ──
+async function resolveAlert(id) {
+  try {
+    await fetch(`${ROUTER_URL}/sos-resolve/${id}`, { method: 'POST' });
+    fetchAlerts();
+  } catch (e) {
+    alert('Failed to resolve — check connection');
+  }
+}
+
+// ── Toggle ──
+function toggleResolved() {
+  resolvedExpanded = !resolvedExpanded;
+  fetchAlerts();
+}
+
+// ── Helpers ──
+function getTimeAgo(timestamp) {
+  const diff = Date.now() - new Date(timestamp).getTime();
+  const sec = Math.floor(diff / 1000);
+  if (sec < 10) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hrs = Math.floor(min / 60);
+  return `${hrs}h ago`;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ── Init ──
+fetchAlerts();
+setInterval(fetchAlerts, 5000);
+</script>
+</body>
+</html>

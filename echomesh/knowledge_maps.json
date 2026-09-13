@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "topic": "evacuation route and safe corridor",
+    "tags": ["maps", "route", "evacuation", "rasta", "highway"],
+    "keywords": ["evacuation", "route", "rasta", "road", "safe road", "highway", "exit", "escape", "direction", "corridor", "traffic"],
+    "content": "निकासी (Evacuation) के लिए मुख्य सेक्टर रोड जो नेशनल हाईवे 48 से जुड़ती है, पूरी तरह खुली और सुरक्षित है। राहत कैंप अल्फा की ओर जाने के लिए उत्तर दिशा में जाएं। दक्षिणी पुल (South Bridge) की तरफ बिल्कुल न जाएं।"
+  },
+  {
+    "id": 2,
+    "topic": "flooded and danger zones to avoid",
+    "tags": ["maps", "danger", "flood", "khatra", "avoid"],
+    "keywords": ["danger", "khatra", "flood", "flooded", "river", "bridge", "blocked", "closed", "unsafe", "submerged", "avoid"],
+    "content": "खतरा चेतावनी: नदी के किनारे वाला निचला रास्ता और पुराना नहर पुल 4 से 6 फीट तेज पानी में डूबा हुआ है। पुरानी मार्केट वाली गली में भूस्खलन और टूटे बिजली के तारों के कारण आवागमन पूरी तरह बंद है।"
+  },
+  {
+    "id": 3,
+    "topic": "hospital and field clinic locations",
+    "tags": ["maps", "hospital", "medical clinic", "aspataal", "doctor"],
+    "keywords": ["hospital", "aspataal", "clinic", "doctor", "medical post", "ambulance", "distance", "emergency room", "location"],
+    "content": "जिला मुख्य अस्पताल हाईवे कॉरिडोर से 3.0 किमी उत्तर-पूर्व में स्थित है। आपातकालीन मोबाइल फर्स्ट-एड क्लिनिक चौराहा 12 (कस्बे के केंद्र से 800 मीटर उत्तर) पर चालू है।"
+  },
+  {
+    "id": 4,
+    "topic": "landing zone and supply airdrop point",
+    "tags": ["maps", "helipad", "airdrop", "supplies"],
+    "keywords": ["helipad", "helicopter", "airdrop", "supplies", "landing", "rescue boat", "pickup", "boat"],
+    "content": "एनडीआरएफ (NDRF) रेस्क्यू बोट स्टेशन हाई स्कूल गेट नंबर 2 पर है। हेलीकॉप्टर द्वारा राहत सामग्री एयरड्रॉप और रेस्क्यू पिकअप सेंट्रल यूनिवर्सिटी स्टेडियम (3.5 किमी उत्तर) में हो रहा है।"
+  }
+]

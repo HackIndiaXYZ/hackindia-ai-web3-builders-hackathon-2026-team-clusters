@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "topic": "shelter locations and relief camps",
+    "tags": ["shelter", "camp", "refuge", "sharan", "rukna", "rahat"],
+    "keywords": ["shelter", "sharan", "camp", "relief", "rahat", "hall", "stay", "rukna", "rukne", "community hall", "safe building", "capacity", "food", "khana"],
+    "content": "मुख्य सरकारी राहत शिविर कम्युनिटी हॉल (सेक्टर 4, 2.0 किमी उत्तर) में चालू है, जहाँ 450 लोगों के रहने, खाना, कंबल और मोबाइल चार्जिंग की व्यवस्था है। दूसरा शिविर इंडोर स्पोर्ट्स कॉम्प्लेक्स (3.2 किमी उत्तर-पश्चिम) में है।"
+  },
+  {
+    "id": 2,
+    "topic": "flood safe shelter and high ground",
+    "tags": ["shelter", "flood", "high ground", "badh", "surakshit"],
+    "keywords": ["flood", "flooding", "badh", "baadh", "high ground", "school", "water", "safe zone", "terrace", "inundation"],
+    "content": "बाढ़ के दौरान सबसे सुरक्षित ऊँचाई वाला शिविर 'राजकीय उच्चतर माध्यमिक विद्यालय' (1.5 किमी पूर्व) है। यह बाढ़ के स्तर से 18 मीटर ऊपर है और यहाँ सोलर बैकअप व छत पर हेलीपैड की सुविधा है।"
+  },
+  {
+    "id": 3,
+    "topic": "drinking water points and food distribution",
+    "tags": ["shelter", "water", "food", "paani", "ration", "khana"],
+    "keywords": ["water", "drinking water", "paani", "pani", "food", "ration", "khana", "well", "distribution", "tanker", "meal", "peene"],
+    "content": "पीने का साफ पानी स्कूल ग्राउंड के पास वाटर फिल्टर यूनिट और कुएं पर उपलब्ध है (1.5 किमी पूर्व)। पका हुआ भोजन और सूखा राशन कम्युनिटी हॉल शिविर में प्रतिदिन सुबह 8:00 बजे और शाम 6:00 बजे बांटा जाता है।"
+  },
+  {
+    "id": 4,
+    "topic": "temporary family tent camp",
+    "tags": ["shelter", "tent", "tambu", "parivar"],
+    "keywords": ["tent", "tambu", "tents", "camp", "temporary", "family", "bedding", "blanket", "children"],
+    "content": "परिवारों के लिए सुरक्षित टेंट सिटी जिला स्टेडियम के पीछे (2.8 किमी पश्चिम) लगाई गई है। यहाँ अलग-अलग फैमिली टेंट, शौचालय और बच्चों/माताओं के लिए विशेष केयर किट उपलब्ध हैं।"
+  }
+]
