@@ -44,6 +44,10 @@ export function useMeshStatus() {
   // Automatic real-time presence heartbeat to the router
   const sendHeartbeat = useCallback(async () => {
     try {
+      let coords = null;
+      if (typeof window !== 'undefined' && window.__echomesh_last_coords) {
+        coords = window.__echomesh_last_coords;
+      }
       await fetch(`${ROUTER_URL}/client-heartbeat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -51,7 +55,8 @@ export function useMeshStatus() {
           deviceId: deviceIdRef.current,
           deviceName: deviceNameRef.current,
           connectionType: 'auto_mesh',
-          hopCount: 1
+          hopCount: 1,
+          coords
         })
       });
     } catch (e) {

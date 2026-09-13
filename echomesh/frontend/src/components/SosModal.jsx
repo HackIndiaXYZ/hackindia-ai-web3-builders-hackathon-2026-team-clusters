@@ -94,10 +94,22 @@ export default function SosModal({ isOpen, onClose }) {
 
   // Pre-fetch live GPS coordinates as soon as SOS modal is opened
   useEffect(() => {
-    const fallbackLat = 28.6139 + (Math.random() - 0.5) * 0.008;
-    const fallbackLng = 77.2090 + (Math.random() - 0.5) * 0.008;
+    const fallbackLat = 28.4927 + (Math.random() - 0.5) * 0.005;
+    const fallbackLng = 77.5358 + (Math.random() - 0.5) * 0.005;
 
     if (isOpen) {
+      // Also pre-fill with mesh anchor location
+      fetch(`${ROUTER_URL}/api/location`)
+        .then(r => r.json())
+        .then(d => {
+          if (d?.location?.latitude) {
+            setCachedCoords(prev => ({
+              latitude: prev.latitude || d.location.latitude,
+              longitude: prev.longitude || d.location.longitude
+            }));
+          }
+        })
+        .catch(() => {});
       if (typeof navigator !== 'undefined' && navigator.geolocation) {
         const onOk = (pos) => {
           setCachedCoords({

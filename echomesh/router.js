@@ -102,6 +102,67 @@ app.get('/api/interest', (req, res) => {
   res.json({ success: true, count: earlyAccessLeads.length, leads: earlyAccessLeads });
 });
 
+// ── Mesh Anchor Geo-Location (Self-Healing Mesh Positioning) ──
+let meshLocation = {
+  latitude: 28.4927,
+  longitude: 77.5358,
+  city: 'Greater Noida',
+  region: 'Uttar Pradesh',
+  country: 'India',
+  accuracy: 25,
+  source: 'network_anchor',
+  lastUpdated: new Date().toISOString()
+};
+
+// Auto-detect real IP geolocation on router start
+(async function initMeshLocation() {
+  try {
+    const geoRes = await axios.get('http://ip-api.com/json', { timeout: 3500 });
+    if (geoRes.data && geoRes.data.status === 'success' && geoRes.data.lat) {
+      meshLocation = {
+        latitude: geoRes.data.lat,
+        longitude: geoRes.data.lon,
+        city: geoRes.data.city || 'Greater Noida',
+        region: geoRes.data.regionName || 'Uttar Pradesh',
+        country: geoRes.data.country || 'India',
+        accuracy: 25,
+        source: 'ip_geo_anchor',
+        lastUpdated: new Date().toISOString()
+      };
+      console.log(`[Mesh Location] 📍 Real anchor acquired: ${meshLocation.latitude}°N, ${meshLocation.longitude}°E (${meshLocation.city}, ${meshLocation.region})`);
+    }
+  } catch (e) {
+    console.log('[Mesh Location] Using local anchor:', meshLocation.city, meshLocation.latitude, meshLocation.longitude);
+  }
+})();
+
+app.get('/api/location', (req, res) => {
+  res.json({ success: true, location: meshLocation });
+});
+
+app.post('/api/location', (req, res) => {
+  const { latitude, longitude, accuracy, city, source } = req.body || {};
+  if (typeof latitude === 'number' && typeof longitude === 'number') {
+    meshLocation = {
+      latitude,
+      longitude,
+      accuracy: accuracy || 10,
+      city: city || meshLocation.city,
+      region: meshLocation.region,
+      country: meshLocation.country,
+      source: source || 'mobile_gps_sync',
+      lastUpdated: new Date().toISOString()
+    };
+    log('[Mesh Location] 📍 Anchor updated via GPS sync', meshLocation);
+    notifyFrontendClients({
+      type: 'MESH_LOCATION_UPDATED',
+      location: meshLocation
+    });
+    return res.json({ success: true, location: meshLocation });
+  }
+  res.status(400).json({ error: 'Valid latitude and longitude required.' });
+});
+
 // Device registry with human-readable metadata
 const DEVICES = [
   { url: 'http://127.0.0.1:4001', name: 'Device A', specialty: 'medical' },
@@ -919,7 +980,7 @@ app.get('/status', async (req, res) => {
 const connectedClients = new Map();
 
 app.post('/client-heartbeat', (req, res) => {
-  const { deviceId, deviceName, connectionType, hopCount } = req.body;
+  const { deviceId, deviceName, connectionType, hopCount, coords } = req.body || {};
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
   const id = deviceId || `client-${clientIp.replace(/[^0-9]/g, '')}`;
 
@@ -932,14 +993,36 @@ app.post('/client-heartbeat', (req, res) => {
     connectionType: connectionType || 'wifi_or_bluetooth',
     hopCount: hopCount || 1,
     lastSeen: Date.now(),
-    status: 'online'
+    status: 'online',
+    coords: coords || null
   });
+
+  // If a mobile phone has real GPS coordinates, sync them to mesh anchor!
+  if (coords && typeof coords.latitude === 'number' && typeof coords.longitude === 'number' && coords.latitude !== 0) {
+    if (meshLocation.source !== 'mobile_gps_sync' || (coords.accuracy && coords.accuracy < (meshLocation.accuracy || 100))) {
+      meshLocation = {
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        accuracy: coords.accuracy || 10,
+        city: meshLocation.city,
+        region: meshLocation.region,
+        country: meshLocation.country,
+        source: `mobile_gps_${deviceName || 'peer'}`,
+        lastUpdated: new Date().toISOString()
+      };
+      log(`📱 [Mesh Location] High-precision GPS synced from mobile phone: ${coords.latitude}°N, ${coords.longitude}°E`);
+      notifyFrontendClients({
+        type: 'MESH_LOCATION_UPDATED',
+        location: meshLocation
+      });
+    }
+  }
 
   if (isNew) {
     log(`📱 [Auto-Presence] New Device Connected in Real-Time: "${deviceName || 'Mobile Node'}" from ${clientIp}`);
   }
 
-  res.json({ success: true, activeClientsCount: connectedClients.size });
+  res.json({ success: true, activeClientsCount: connectedClients.size, meshLocation });
 });
 // ══════════════════════════════════════════════════════════════
 //  SYNCHRONIZED TWO-WAY BLUETOOTH PAIRING & RELAY REGISTRY
@@ -1372,10 +1455,10 @@ app.post('/sos', async (req, res) => {
     // Assign safe coordinates with realistic sector offset if GPS is null/0
     const safeLat = (typeof latitude === 'number' && !isNaN(latitude) && latitude !== 0)
       ? latitude
-      : 28.6139 + (Math.random() - 0.5) * 0.008;
+      : (meshLocation.latitude || 28.4927) + (Math.random() - 0.5) * 0.005;
     const safeLng = (typeof longitude === 'number' && !isNaN(longitude) && longitude !== 0)
       ? longitude
-      : 77.2090 + (Math.random() - 0.5) * 0.008;
+      : (meshLocation.longitude || 77.5358) + (Math.random() - 0.5) * 0.005;
 
     // Create SOS entry with unique ID and dual deviceName/sender keys
     const sosEntry = {

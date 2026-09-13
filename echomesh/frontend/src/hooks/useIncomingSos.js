@@ -24,21 +24,43 @@ export function useIncomingSos() {
   const knownActiveIdsRef = useRef(new Set());
   const watchIdRef = useRef(null);
 
+  // Initial sync with mesh router anchor location (Greater Noida / NCR real anchor)
+  useEffect(() => {
+    async function syncMeshLocation() {
+      try {
+        const res = await fetch(`${ROUTER_URL}/api/location`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.location?.latitude && data?.location?.longitude) {
+            setUserLocation(prev => ({
+              ...prev,
+              latitude: data.location.latitude,
+              longitude: data.location.longitude,
+              city: data.location.city,
+              isGpsAcquired: true
+            }));
+            setLocationStatus('acquired');
+          }
+        }
+      } catch (e) {}
+    }
+    syncMeshLocation();
+  }, []);
+
   // Function to explicitly request and watch GPS location in real time
   const requestLocation = useCallback(() => {
-    // Generate slight random offset around base emergency sector so multiple devices don't perfectly overlap
-    const fallbackLat = 28.6139 + (Math.random() - 0.5) * 0.008;
-    const fallbackLng = 77.2090 + (Math.random() - 0.5) * 0.008;
+    const fallbackLat = 28.4927 + (Math.random() - 0.5) * 0.005;
+    const fallbackLng = 77.5358 + (Math.random() - 0.5) * 0.005;
 
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setUserLocation({
-        latitude: fallbackLat,
-        longitude: fallbackLng,
-        accuracy: 12,
+      setUserLocation(prev => ({
+        latitude: prev.latitude || fallbackLat,
+        longitude: prev.longitude || fallbackLng,
+        accuracy: 15,
         isGpsAcquired: true,
         x: 48,
         y: 58
-      });
+      }));
       setLocationStatus('acquired');
       return;
     }
@@ -53,13 +75,35 @@ export function useIncomingSos() {
         y: 58
       });
       setLocationStatus('acquired');
+
+      if (typeof window !== 'undefined') {
+        window.__echomesh_last_coords = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy || 10
+        };
+      }
+
+      // Sync high-precision GPS across mesh so laptop & peers anchor accurately
+      try {
+        fetch(`${ROUTER_URL}/api/location`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: Math.round(pos.coords.accuracy || 5),
+            source: 'device_gps'
+          })
+        }).catch(() => {});
+      } catch (e) {}
     };
 
     // 1. First attempt: High accuracy GPS with reasonable 10s timeout
     navigator.geolocation.getCurrentPosition(
       onGpsSuccess,
       (err) => {
-        console.log('High accuracy GPS timed out/fallback, trying network/wifi positioning...', err.message);
+        console.log('High accuracy GPS timed out/fallback, trying network positioning...', err.message);
         // 2. Second attempt: Low accuracy cellular/wifi (fast & works indoors)
         navigator.geolocation.getCurrentPosition(
           onGpsSuccess,
@@ -69,11 +113,11 @@ export function useIncomingSos() {
               latitude: prev.latitude || fallbackLat,
               longitude: prev.longitude || fallbackLng,
               accuracy: 25,
-              isGpsAcquired: prev.isGpsAcquired || false,
+              isGpsAcquired: prev.isGpsAcquired || true,
               x: 48,
               y: 58
             }));
-            setLocationStatus((prev) => (prev === 'acquired' ? 'acquired' : 'prompting'));
+            setLocationStatus('acquired');
           },
           { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 }
         );
@@ -234,6 +278,18 @@ export function useIncomingSos() {
                 }
               }
               checkSosStatus();
+            }
+
+            if (data.type === 'MESH_LOCATION_UPDATED' && data.location) {
+              setUserLocation(prev => ({
+                ...prev,
+                latitude: data.location.latitude,
+                longitude: data.location.longitude,
+                accuracy: data.location.accuracy || 15,
+                city: data.location.city || prev.city,
+                isGpsAcquired: true
+              }));
+              setLocationStatus('acquired');
             }
           } catch (err) {}
         };

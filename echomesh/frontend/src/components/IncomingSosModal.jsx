@@ -229,9 +229,9 @@ export default function IncomingSosModal({
 
   const totalSosCount = activeSosList.length > 0 ? activeSosList.length : 1;
 
-  // Position coordinates
-  const userLat = userLocation?.latitude || 26.9124;
-  const userLng = userLocation?.longitude || 75.7873;
+  // Position coordinates (anchored to user's real location in Greater Noida / NCR)
+  const userLat = userLocation?.latitude || 28.4927;
+  const userLng = userLocation?.longitude || 77.5358;
   const victimLat = currentSos.latitude || (userLat + 0.0025);
   const victimLng = currentSos.longitude || (userLng + 0.0035);
 

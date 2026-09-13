@@ -233,6 +233,8 @@ export default function OfflineMap({
   peers = [],
   bluetoothPeers = [],
   connectedClients = [],
+  userLocation = null,
+  activeSosList = [],
   routerOnline = true,
   nodeInfo = null,
   defaultLayer = 'all',
@@ -244,13 +246,50 @@ export default function OfflineMap({
   const [filter, setFilter] = useState(defaultLayer);
   const [sosAlerts, setSosAlerts] = useState([]);
   const [lastSync, setLastSync] = useState(new Date().toLocaleTimeString());
-  const [userPos, setUserPos] = useState(null);
+  const [userPos, setUserPos] = useState(() => {
+    if (userLocation?.latitude && userLocation?.longitude) {
+      return [userLocation.latitude, userLocation.longitude];
+    }
+    return null;
+  });
+  const [meshAnchor, setMeshAnchor] = useState([28.4927, 77.5358]); // Greater Noida / NCR real anchor
+  const [meshLocationInfo, setMeshLocationInfo] = useState({ city: 'Greater Noida', region: 'Uttar Pradesh' });
   const [gpsError, setGpsError] = useState(null);
 
-  // Default center (India) — will be overridden by GPS
-  const defaultCenter = [26.9124, 75.7873]; // Jaipur fallback
+  // Default center based on real mesh anchor
+  const defaultCenter = meshAnchor;
 
-  // Get user's real GPS location
+  // 1. Sync userLocation prop whenever parent passes it
+  useEffect(() => {
+    if (userLocation?.latitude && userLocation?.longitude) {
+      setUserPos([userLocation.latitude, userLocation.longitude]);
+      setMeshAnchor([userLocation.latitude, userLocation.longitude]);
+      setGpsError(null);
+    }
+  }, [userLocation?.latitude, userLocation?.longitude]);
+
+  // 2. Query router /api/location for the mesh's shared anchor location
+  useEffect(() => {
+    async function fetchMeshLocation() {
+      try {
+        const res = await fetch(`${ROUTER_URL}/api/location`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.location?.latitude && data?.location?.longitude) {
+            const anchor = [data.location.latitude, data.location.longitude];
+            setMeshAnchor(anchor);
+            if (data.location.city) {
+              setMeshLocationInfo({ city: data.location.city, region: data.location.region || '' });
+            }
+            setUserPos(prev => prev || anchor);
+          }
+        }
+      } catch (e) { /* Offline fallback */ }
+    }
+    fetchMeshLocation();
+  }, []);
+
+  // 3. Try real browser GPS watch
   useEffect(() => {
     if (!navigator.geolocation) {
       setGpsError('Geolocation not supported');
@@ -259,11 +298,27 @@ export default function OfflineMap({
 
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        setUserPos([pos.coords.latitude, pos.coords.longitude]);
+        const coords = [pos.coords.latitude, pos.coords.longitude];
+        setUserPos(coords);
+        setMeshAnchor(coords);
         setGpsError(null);
+
+        // Share high-accuracy browser GPS with router so laptop and peers get it
+        try {
+          fetch(`${ROUTER_URL}/api/location`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              accuracy: Math.round(pos.coords.accuracy || 10),
+              source: 'browser_gps'
+            })
+          }).catch(() => {});
+        } catch (e) {}
       },
       (err) => {
-        console.warn('[Map] GPS error:', err.message);
+        console.warn('[Map] Local GPS unavailable, relying on mesh anchor:', err.message);
         setGpsError(err.message);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
@@ -462,8 +517,8 @@ export default function OfflineMap({
               errorTileUrl="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
             />
 
-            {/* Fly to user when GPS acquired */}
-            {userPos && <FlyToUser center={userPos} />}
+            {/* Fly to user when GPS or mesh anchor acquired */}
+            <FlyToUser center={userPos || meshAnchor} />
 
             {/* Concentric Tactical Sonar Radar Range Rings (Always Visible Offline) */}
             {userPos && (
