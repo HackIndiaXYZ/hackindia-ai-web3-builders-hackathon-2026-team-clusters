@@ -19,6 +19,8 @@ export function useIncomingSos() {
 
   // Track muted or dismissed SOS IDs so we don't spam after user closes
   const dismissedIdsRef = useRef(new Set());
+  const mutedSosIdsRef = useRef(new Set());
+  const isMutedByUserRef = useRef(false);
   const knownActiveIdsRef = useRef(new Set());
   const watchIdRef = useRef(null);
 
@@ -102,8 +104,6 @@ export function useIncomingSos() {
     };
   }, [requestLocation]);
 
-
-
   const isSirenSoundingRef = useRef(false);
   useEffect(() => {
     isSirenSoundingRef.current = isSirenSounding;
@@ -119,7 +119,10 @@ export function useIncomingSos() {
       setActiveSosList(active);
 
       if (active.length === 0) {
-        // If all resolved, stop siren and reset
+        // If all resolved, stop siren and reset mute memory
+        mutedSosIdsRef.current.clear();
+        isMutedByUserRef.current = false;
+        emergencyAudio.unmute();
         if (isSirenSoundingRef.current) {
           emergencyAudio.stopSiren();
           setIsSirenSounding(false);
@@ -132,13 +135,16 @@ export function useIncomingSos() {
       const sosId = newestActive.id;
       const alertKey = `${sosId}_${newestActive.timestamp || ''}`;
 
+      const isDismissed = dismissedIdsRef.current.has(sosId) || dismissedIdsRef.current.has(alertKey);
+      const isMuted = isMutedByUserRef.current || mutedSosIdsRef.current.has(sosId) || mutedSosIdsRef.current.has(alertKey);
+
       // Detect if this is a newly arrived SOS or currently unhandled SOS
-      if (!dismissedIdsRef.current.has(sosId) && !dismissedIdsRef.current.has(alertKey)) {
+      if (!isDismissed) {
         setIncomingSos(newestActive);
         setIsAlertModalOpen(true);
 
-        // Sound the emergency alarm siren!
-        if (!isSirenSoundingRef.current) {
+        // Sound the emergency alarm siren only if user hasn't explicitly muted!
+        if (!isSirenSoundingRef.current && !isMuted) {
           emergencyAudio.startSiren();
           setIsSirenSounding(true);
 
@@ -185,10 +191,13 @@ export function useIncomingSos() {
               const sosId = entry.id;
               const alertKey = `${sosId}_${entry.timestamp || ''}`;
 
-              if (!dismissedIdsRef.current.has(sosId) && !dismissedIdsRef.current.has(alertKey)) {
+              const isDismissed = dismissedIdsRef.current.has(sosId) || dismissedIdsRef.current.has(alertKey);
+              const isMuted = isMutedByUserRef.current || mutedSosIdsRef.current.has(sosId) || mutedSosIdsRef.current.has(alertKey);
+
+              if (!isDismissed) {
                 setIncomingSos(entry);
                 setIsAlertModalOpen(true);
-                if (!isSirenSoundingRef.current) {
+                if (!isSirenSoundingRef.current && !isMuted) {
                   emergencyAudio.startSiren();
                   setIsSirenSounding(true);
                   if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -222,23 +231,42 @@ export function useIncomingSos() {
     };
   }, [checkSosStatus]);
 
-  const muteSiren = useCallback(() => {
-    emergencyAudio.stopSiren();
+  // Bulletproof siren mute: stops audio engine, registers muted ID, cancels vibration
+  const muteSiren = useCallback((targetId) => {
+    emergencyAudio.mute();
     setIsSirenSounding(false);
+    isSirenSoundingRef.current = false;
+    isMutedByUserRef.current = true;
+    if (targetId) mutedSosIdsRef.current.add(targetId);
+    if (incomingSos?.id) mutedSosIdsRef.current.add(incomingSos.id);
+
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       try { navigator.vibrate(0); } catch (e) {}
     }
+  }, [incomingSos?.id]);
+
+  // Manual unmute if user wants to play siren again
+  const unmuteSiren = useCallback(() => {
+    isMutedByUserRef.current = false;
+    mutedSosIdsRef.current.clear();
+    emergencyAudio.unmute();
+    emergencyAudio.startSiren(true);
+    setIsSirenSounding(true);
   }, []);
 
   const dismissAlert = useCallback((id, timestamp) => {
     if (id) {
       dismissedIdsRef.current.add(id);
+      mutedSosIdsRef.current.add(id);
       if (timestamp) {
         dismissedIdsRef.current.add(`${id}_${timestamp}`);
+        mutedSosIdsRef.current.add(`${id}_${timestamp}`);
       }
     }
     emergencyAudio.stopSiren();
+    emergencyAudio.mute();
     setIsSirenSounding(false);
+    isSirenSoundingRef.current = false;
     setIsAlertModalOpen(false);
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       try { navigator.vibrate(0); } catch (e) {}
@@ -248,7 +276,9 @@ export function useIncomingSos() {
   const resolveSos = useCallback(async (id) => {
     try {
       emergencyAudio.stopSiren();
+      emergencyAudio.mute();
       setIsSirenSounding(false);
+      isSirenSoundingRef.current = false;
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         try { navigator.vibrate(0); } catch (e) {}
       }
@@ -267,6 +297,7 @@ export function useIncomingSos() {
     setIsAlertModalOpen,
     isSirenSounding,
     muteSiren,
+    unmuteSiren,
     dismissAlert,
     resolveSos,
     userLocation,

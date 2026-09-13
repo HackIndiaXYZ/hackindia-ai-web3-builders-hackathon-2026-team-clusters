@@ -29,6 +29,7 @@ export default function App() {
     isAlertModalOpen,
     isSirenSounding,
     muteSiren,
+    unmuteSiren,
     dismissAlert,
     resolveSos,
     userLocation,
@@ -129,6 +130,7 @@ export default function App() {
         userLocation={userLocation}
         isSirenSounding={isSirenSounding}
         onMute={muteSiren}
+        onUnmute={unmuteSiren}
         onDismiss={dismissAlert}
         onResolve={resolveSos}
         onOpenMap={() => {

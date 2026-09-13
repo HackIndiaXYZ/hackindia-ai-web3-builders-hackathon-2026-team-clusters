@@ -131,6 +131,7 @@ export default function IncomingSosModal({
   userLocation,
   isSirenSounding,
   onMute,
+  onUnmute,
   onDismiss,
   onResolve,
   onOpenMap
@@ -220,6 +221,7 @@ export default function IncomingSosModal({
     voiceAssistant.stopSpeaking();
     setIsSpeakingVoice(false);
     setIsPlayingVictimAudio(false);
+    if (onMute) onMute(currentSos?.id);
     onDismiss(currentSos?.id, currentSos?.timestamp);
   };
 
@@ -238,59 +240,79 @@ export default function IncomingSosModal({
   const mapCenter = [(userLat + victimLat) / 2, (userLng + victimLng) / 2];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto overscroll-contain animate-fade-in">
       
-      <div className={`bg-white rounded-3xl max-w-lg w-full p-5 sm:p-7 border-2 ${isSeismic ? 'border-amber-500 shadow-amber-500/20' : 'border-red-500'} relative shadow-2xl overflow-hidden animate-scale-up`}>
+      {/* Scrollable Container with max height and sticky header/footer */}
+      <div className={`relative w-full max-w-lg my-auto rounded-3xl bg-white border-2 ${
+        isSeismic ? 'border-amber-500 shadow-amber-500/25' : 'border-red-500 shadow-red-500/25'
+      } flex flex-col max-h-[92vh] sm:max-h-[88vh] shadow-2xl animate-scale-up overflow-hidden`}>
         
         {/* Animated Emergency Top Bar */}
-        <div className={`absolute top-0 left-0 right-0 h-2 bg-gradient-to-r ${isSeismic ? 'from-amber-500 via-red-600 to-amber-500' : 'from-red-600 via-amber-500 to-red-600'} animate-pulse`} />
+        <div className={`w-full h-2 flex-shrink-0 bg-gradient-to-r ${
+          isSeismic ? 'from-amber-500 via-red-600 to-amber-500' : 'from-red-600 via-amber-500 to-red-600'
+        } animate-pulse`} />
 
-        {/* Close & Silence Button */}
-        <button
-          onClick={handleDismissWithVoice}
-          className="absolute top-3.5 right-3.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 hover:border-red-300 font-bold text-xs transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-95"
-          title="Dismiss Alert, Stop Siren & Voice"
-        >
-          <span>✕</span>
-          <span className="hidden sm:inline">सायरन रोकें / Close</span>
-        </button>
+        {/* ── STICKY TOP HEADER BAR ── */}
+        <div className="flex-shrink-0 px-4 sm:px-6 pt-3 pb-2.5 bg-white/95 backdrop-blur-md border-b border-slate-100 flex items-center justify-between gap-2 relative z-20">
+          <div className="flex items-center gap-2">
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full ${
+              isSeismic ? 'bg-amber-50 border border-amber-300 text-amber-800' : 'bg-red-50 border border-red-300 text-[#DC3545]'
+            } text-xs font-bold`}>
+              <span className={`w-2.5 h-2.5 rounded-full ${isSeismic ? 'bg-amber-500' : 'bg-[#DC3545]'} animate-ping inline-block`} />
+              <span>{isSeismic ? '⚡ SEISMIC ALERT' : `🚨 SOS (${selectedSosIndex + 1}/${totalSosCount})`}</span>
+            </div>
 
-        {/* Header Badge & Multi-Victim Switcher */}
-        <div className="text-center mb-3 pt-1">
-          <div className={`inline-flex items-center gap-2 px-3.5 py-1 rounded-full ${isSeismic ? 'bg-amber-50 border border-amber-300 text-amber-800' : 'bg-red-50 border border-red-300 text-[#DC3545]'} text-xs font-bold animate-pulse mb-2`}>
-            <span className={`w-2.5 h-2.5 rounded-full ${isSeismic ? 'bg-amber-500' : 'bg-[#DC3545]'} animate-ping inline-block`} />
-            <span>{isSeismic ? '⚡ SEISMIC / UNUSUAL ACTIVITY ALERT' : `🚨 INCOMING SOS (${selectedSosIndex + 1} of ${totalSosCount})`}</span>
+            {totalSosCount > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSosIndex((prev) => (prev > 0 ? prev - 1 : totalSosCount - 1))}
+                  className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 border border-slate-200 text-[11px] text-slate-700 font-bold cursor-pointer"
+                  title="Previous Alert"
+                >
+                  ◀
+                </button>
+                <span className="text-[10px] font-bold text-slate-500">
+                  {selectedSosIndex + 1}/{totalSosCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSosIndex((prev) => (prev < totalSosCount - 1 ? prev + 1 : 0))}
+                  className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 border border-slate-200 text-[11px] text-slate-700 font-bold cursor-pointer"
+                  title="Next Alert"
+                >
+                  ▶
+                </button>
+              </div>
+            )}
           </div>
 
-          {totalSosCount > 1 && (
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <button
-                onClick={() => setSelectedSosIndex((prev) => (prev > 0 ? prev - 1 : totalSosCount - 1))}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs text-slate-700 font-bold cursor-pointer"
-              >
-                ◀ Previous Victim
-              </button>
-              <span className="text-[11px] font-bold text-slate-500">
-                Alert {selectedSosIndex + 1} / {totalSosCount}
-              </span>
-              <button
-                onClick={() => setSelectedSosIndex((prev) => (prev < totalSosCount - 1 ? prev + 1 : 0))}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs text-slate-700 font-bold cursor-pointer"
-              >
-                Next Victim ▶
-              </button>
-            </div>
-          )}
+          {/* Close & Silence Button */}
+          <button
+            type="button"
+            onClick={handleDismissWithVoice}
+            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-600 border border-slate-200 hover:border-red-300 font-bold text-xs transition-all cursor-pointer flex items-center gap-1 shadow-2xs active:scale-95"
+            title="Dismiss Alert, Stop Siren & Voice"
+          >
+            <span>✕</span>
+            <span>सायरन रोकें / Close</span>
+          </button>
+        </div>
 
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center justify-center gap-2">
-            <span>{isSeismic ? '⚡ Unusual Tremors Detected' : `Disaster Victim: ${currentSos.deviceName}`}</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {isSeismic ? 'Shockwave / physical tremor detected by connected mesh node.' : 'Emergency distress signal detected in local mesh network.'}
-          </p>
+        {/* ── SCROLLABLE BODY CONTENT (Contains all details, audio, map, and telemetry) ── */}
+        <div className="overflow-y-auto px-4 sm:px-6 py-4 space-y-4 flex-1 overscroll-contain">
+          {/* Header Title */}
+          <div className="text-center">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center justify-center gap-2">
+              <span>{isSeismic ? '⚡ Unusual Tremors Detected' : `Disaster Victim: ${currentSos.deviceName}`}</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {isSeismic ? 'Shockwave / physical tremor detected by connected mesh node.' : 'Emergency distress signal detected in local mesh network.'}
+            </p>
+          </div>
 
           {/* Prominent Emergency Message / Evacuation Box */}
-          <div className={`mt-2.5 p-3.5 rounded-2xl ${isSeismic ? 'bg-amber-50 border border-amber-300 text-amber-900' : 'bg-red-50 border border-red-200 text-red-900'} text-xs font-medium text-left shadow-xs`}>
+          <div className={`p-3.5 rounded-2xl ${isSeismic ? 'bg-amber-50 border border-amber-300 text-amber-900' : 'bg-red-50 border border-red-200 text-red-900'} text-xs font-medium text-left shadow-xs`}>
             <div className="font-bold flex items-center justify-between gap-1.5 mb-1.5 pb-1 border-b border-red-200/60">
               <span className="flex items-center gap-1">
                 <span>{isSeismic ? '🚨 EVACUATION NOTICE:' : '📢 DISTRESS MESSAGE:'}</span>
@@ -377,154 +399,162 @@ export default function IncomingSosModal({
               </div>
             )}
           </div>
-        </div>
 
-        {/* Siren Sound Active Banner with Mute Button */}
-        {isSirenSounding ? (
-          <div className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-red-50 border border-red-300 mb-4 text-xs text-red-700 animate-pulse">
-            <div className="flex items-center gap-2">
-              <span className="text-xl animate-bounce">🔊</span>
-              <div>
-                <p className="font-black text-[#DC3545]">Emergency Siren Sounding</p>
-                <p className="text-[10px] text-red-600 font-medium">Audible on all nearby mesh devices</p>
+          {/* Siren Sound Active Banner with Mute Button */}
+          {isSirenSounding ? (
+            <div className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-red-50 border border-red-300 text-xs text-red-700 animate-pulse shadow-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-xl animate-bounce">🔊</span>
+                <div>
+                  <p className="font-black text-[#DC3545]">Emergency Siren Sounding</p>
+                  <p className="text-[10px] text-red-600 font-medium">Audible on all nearby mesh devices</p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => onMute && onMute(currentSos?.id)}
+                className="px-3.5 py-2 rounded-xl bg-[#DC3545] hover:bg-red-700 text-white font-black text-xs transition-all shadow-md cursor-pointer active:scale-95 flex items-center gap-1.5"
+              >
+                <span>🔇</span>
+                <span>सायरन रोकें (MUTE)</span>
+              </button>
             </div>
-            <button
-              onClick={onMute}
-              className="px-3.5 py-2 rounded-xl bg-[#DC3545] hover:bg-red-700 text-white font-black text-xs transition-all shadow-md cursor-pointer active:scale-95"
-            >
-              🔇 MUTE SIREN
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-slate-50 border border-slate-200 mb-4 text-xs text-slate-500">
-            <span className="font-bold">🔇 Siren is currently Muted</span>
-            <button
-              onClick={() => emergencyAudio.startSiren()}
-              className="text-[#0D6EFD] hover:underline text-[11px] cursor-pointer font-bold flex items-center gap-1"
-            >
-              🔊 Play Siren
-            </button>
-          </div>
-        )}
-
-        {/* ═══ REAL OPENSTREETMAP LEAFLET TACTICAL RADAR CANVAS ═══ */}
-        <div className="relative h-56 rounded-2xl border border-slate-200 overflow-hidden shadow-inner mb-4 bg-[#07111e]">
-          <MapContainer
-            center={mapCenter}
-            zoom={15}
-            style={{
-              height: '100%',
-              width: '100%',
-              backgroundColor: '#07111e',
-              backgroundImage: `
-                radial-gradient(circle at center, rgba(239, 68, 68, 0.18) 0%, rgba(7, 17, 30, 0.95) 75%),
-                linear-gradient(rgba(14, 165, 233, 0.15) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(14, 165, 233, 0.15) 1px, transparent 1px)
-              `,
-              backgroundSize: '100% 100%, 40px 40px, 40px 40px'
-            }}
-            zoomControl={false}
-            attributionControl={false}
-          >
-            {/* Offline-first: tiles try OSM, fall back to high-tech tactical grid if no internet */}
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              maxZoom={19}
-              errorTileUrl="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-            />
-
-            <FitMapBounds userPos={userPos} victimPos={victimPos} />
-
-            {/* Concentric Tactical Sonar Range Rings around Receiver */}
-            <Circle
-              center={userPos}
-              radius={150}
-              pathOptions={{ color: '#06b6d4', fillColor: '#06b6d4', fillOpacity: 0.05, weight: 1, dashArray: '4, 4' }}
-            />
-            <Circle
-              center={userPos}
-              radius={400}
-              pathOptions={{ color: '#3b82f6', fillColor: 'transparent', weight: 1, dashArray: '6, 6' }}
-            />
-
-            {/* Connecting Polyline between You and Victim */}
-            <Polyline
-              positions={[userPos, victimPos]}
-              pathOptions={{ color: '#0D6EFD', weight: 3, dashArray: '6, 6' }}
-            />
-
-            {/* Pulsing Circle around Victim */}
-            <Circle
-              center={victimPos}
-              radius={80}
-              pathOptions={{ color: '#DC3545', fillColor: '#DC3545', fillOpacity: 0.22, weight: 2 }}
-            />
-
-            {/* Receiver / You Location Marker */}
-            <Marker position={userPos} icon={createUserIcon()}>
-              <Popup>
-                <div style={{ fontFamily: 'sans-serif', fontSize: '12px', color: '#0f172a' }}>
-                  <strong>📍 YOU (Receiver)</strong><br />
-                  <span>GPS: {userLat.toFixed(5)}°, {userLng.toFixed(5)}°</span>
-                </div>
-              </Popup>
-            </Marker>
-
-            {/* Victim Location Marker */}
-            <Marker position={victimPos} icon={createSosIcon()}>
-              <Popup>
-                <div style={{ fontFamily: 'sans-serif', fontSize: '12px', color: '#0f172a' }}>
-                  <strong style={{ color: '#dc2626' }}>🚨 VICTIM: {currentSos.deviceName}</strong><br />
-                  <span>GPS: {victimLat.toFixed(5)}°, {victimLng.toFixed(5)}°</span>
-                </div>
-              </Popup>
-            </Marker>
-          </MapContainer>
-
-          {/* Distance Badge Floating Overlay */}
-          <div className="absolute bottom-3 left-3 z-[1000] px-3 py-1.5 rounded-xl bg-white/95 border border-blue-200 text-[#0D6EFD] text-xs font-bold shadow-md backdrop-blur-md flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
-            <span>📍 {distanceInfo.formatted}</span>
-          </div>
-        </div>
-
-        {/* Rescue Details Grid */}
-        <div className="grid grid-cols-2 gap-3 mb-5 text-xs">
-          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold block mb-1">
-              VICTIM / SENDER
-            </span>
-            <div className="flex items-center gap-1.5 font-bold text-slate-900">
-              <span>👤 {currentSos.deviceName}</span>
+          ) : (
+            <div className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🔇</span>
+                <span className="font-bold">सायरन म्यूट है (Siren is currently Muted)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => (onUnmute ? onUnmute() : emergencyAudio.startSiren(true))}
+                className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#0D6EFD] border border-blue-200 text-xs cursor-pointer font-bold flex items-center gap-1 transition-colors"
+              >
+                <span>🔊</span>
+                <span>सायरन बजाएं (Play)</span>
+              </button>
             </div>
-            {currentSos.latitude && (
-              <span className="text-[10px] text-slate-500 block mt-1 font-mono">
-                {currentSos.latitude.toFixed(4)}°, {currentSos.longitude.toFixed(4)}°
+          )}
+
+          {/* ═══ REAL OPENSTREETMAP LEAFLET TACTICAL RADAR CANVAS ═══ */}
+          <div className="relative h-52 sm:h-56 rounded-2xl border border-slate-200 overflow-hidden shadow-inner bg-[#07111e]">
+            <MapContainer
+              center={mapCenter}
+              zoom={15}
+              style={{
+                height: '100%',
+                width: '100%',
+                backgroundColor: '#07111e',
+                backgroundImage: `
+                  radial-gradient(circle at center, rgba(239, 68, 68, 0.18) 0%, rgba(7, 17, 30, 0.95) 75%),
+                  linear-gradient(rgba(14, 165, 233, 0.15) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(14, 165, 233, 0.15) 1px, transparent 1px)
+                `,
+                backgroundSize: '100% 100%, 40px 40px, 40px 40px'
+              }}
+              zoomControl={false}
+              attributionControl={false}
+            >
+              {/* Offline-first: tiles try OSM, fall back to high-tech tactical grid if no internet */}
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                maxZoom={19}
+                errorTileUrl="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+              />
+
+              <FitMapBounds userPos={userPos} victimPos={victimPos} />
+
+              {/* Concentric Tactical Sonar Range Rings around Receiver */}
+              <Circle
+                center={userPos}
+                radius={150}
+                pathOptions={{ color: '#06b6d4', fillColor: '#06b6d4', fillOpacity: 0.05, weight: 1, dashArray: '4, 4' }}
+              />
+              <Circle
+                center={userPos}
+                radius={400}
+                pathOptions={{ color: '#3b82f6', fillColor: 'transparent', weight: 1, dashArray: '6, 6' }}
+              />
+
+              {/* Connecting Polyline between You and Victim */}
+              <Polyline
+                positions={[userPos, victimPos]}
+                pathOptions={{ color: '#0D6EFD', weight: 3, dashArray: '6, 6' }}
+              />
+
+              {/* Pulsing Circle around Victim */}
+              <Circle
+                center={victimPos}
+                radius={80}
+                pathOptions={{ color: '#DC3545', fillColor: '#DC3545', fillOpacity: 0.22, weight: 2 }}
+              />
+
+              {/* Receiver / You Location Marker */}
+              <Marker position={userPos} icon={createUserIcon()}>
+                <Popup>
+                  <div style={{ fontFamily: 'sans-serif', fontSize: '12px', color: '#0f172a' }}>
+                    <strong>📍 YOU (Receiver)</strong><br />
+                    <span>GPS: {userLat.toFixed(5)}°, {userLng.toFixed(5)}°</span>
+                  </div>
+                </Popup>
+              </Marker>
+
+              {/* Victim Location Marker */}
+              <Marker position={victimPos} icon={createSosIcon()}>
+                <Popup>
+                  <div style={{ fontFamily: 'sans-serif', fontSize: '12px', color: '#0f172a' }}>
+                    <strong style={{ color: '#dc2626' }}>🚨 VICTIM: {currentSos.deviceName}</strong><br />
+                    <span>GPS: {victimLat.toFixed(5)}°, {victimLng.toFixed(5)}°</span>
+                  </div>
+                </Popup>
+              </Marker>
+            </MapContainer>
+
+            {/* Distance Badge Floating Overlay */}
+            <div className="absolute bottom-3 left-3 z-[1000] px-3 py-1.5 rounded-xl bg-white/95 border border-blue-200 text-[#0D6EFD] text-xs font-bold shadow-md backdrop-blur-md flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+              <span>📍 {distanceInfo.formatted}</span>
+            </div>
+          </div>
+
+          {/* Rescue Details Grid */}
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold block mb-1">
+                VICTIM / SENDER
               </span>
-            )}
-          </div>
-
-          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold block mb-1">
-              DISTANCE & BEARING
-            </span>
-            <div className="font-bold text-[#0D6EFD]">
-              📐 {distanceInfo.bearingText} ({distanceInfo.bearing}°)
+              <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                <span>👤 {currentSos.deviceName}</span>
+              </div>
+              {currentSos.latitude && (
+                <span className="text-[10px] text-slate-500 block mt-1 font-mono">
+                  {currentSos.latitude.toFixed(4)}°, {currentSos.longitude.toFixed(4)}°
+                </span>
+              )}
             </div>
-            <span className="text-[10px] text-[#198754] font-bold block mt-1">
-              🏃 {distanceInfo.walkTime}
-            </span>
+
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold block mb-1">
+                DISTANCE & BEARING
+              </span>
+              <div className="font-bold text-[#0D6EFD]">
+                📐 {distanceInfo.bearingText} ({distanceInfo.bearing}°)
+              </div>
+              <span className="text-[10px] text-[#198754] font-bold block mt-1">
+                🏃 {distanceInfo.walkTime}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="space-y-2">
+        {/* ── STICKY BOTTOM ACTION FOOTER BAR ── */}
+        <div className="flex-shrink-0 px-4 sm:px-6 py-3 bg-slate-50/95 backdrop-blur-md border-t border-slate-200 space-y-2 relative z-20">
           <div className="flex items-center gap-2">
             {/* Primary Stop Siren / Dismiss Button */}
             <button
-              onClick={() => onDismiss(currentSos.id)}
-              className="flex-1 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white font-black text-xs shadow-lg transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-2 border border-red-400/30"
+              type="button"
+              onClick={handleDismissWithVoice}
+              className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white font-black text-xs sm:text-sm shadow-lg transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-2 border border-red-400/30"
             >
               <span className="text-base">🔇</span>
               <span>सायरन बंद करें / STOP ALARM</span>
@@ -532,11 +562,12 @@ export default function IncomingSosModal({
 
             {onOpenMap && (
               <button
+                type="button"
                 onClick={() => {
-                  onDismiss(currentSos.id);
+                  handleDismissWithVoice();
                   onOpenMap();
                 }}
-                className="px-4 py-3.5 rounded-2xl bg-blue-50 hover:bg-blue-100 text-[#0D6EFD] font-bold text-xs border border-blue-200 transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-3 rounded-2xl bg-blue-50 hover:bg-blue-100 text-[#0D6EFD] font-bold text-xs border border-blue-200 transition-all cursor-pointer flex items-center gap-1.5"
                 title="View Tactical Radar Map"
               >
                 <span>🗺️</span>
@@ -546,8 +577,9 @@ export default function IncomingSosModal({
           </div>
 
           <button
+            type="button"
             onClick={() => onResolve(currentSos.id)}
-            className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-bold text-xs border border-slate-200 hover:border-emerald-300 transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-2"
+            className="w-full py-2.5 rounded-xl bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-bold text-xs border border-slate-200 hover:border-emerald-300 transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-2 shadow-2xs"
           >
             <span>✅</span>
             <span>स्थिति सुरक्षित है (Mark as Rescued / Resolved)</span>
@@ -558,3 +590,5 @@ export default function IncomingSosModal({
     </div>
   );
 }
+
+

@@ -121,6 +121,7 @@ export default function SosModal({ isOpen, onClose }) {
   useEffect(() => {
     if (!isOpen) {
       emergencyAudio.stopSiren();
+      emergencyAudio.mute();
       voiceAssistant.stopListening();
       stopAudioClip();
       setIsSirenActive(false);
@@ -132,9 +133,11 @@ export default function SosModal({ isOpen, onClose }) {
   const toggleSirenSound = () => {
     if (isSirenActive) {
       emergencyAudio.stopSiren();
+      emergencyAudio.mute();
       setIsSirenActive(false);
     } else {
-      emergencyAudio.startSiren();
+      emergencyAudio.unmute();
+      emergencyAudio.startSiren(true);
       setIsSirenActive(true);
     }
   };
@@ -285,8 +288,8 @@ export default function SosModal({ isOpen, onClose }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150 overflow-y-auto">
-      <div className="bg-white border border-slate-200 text-slate-800 max-w-md w-full p-5 sm:p-7 rounded-2xl relative shadow-2xl my-auto">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150 overflow-y-auto overscroll-contain">
+      <div className="bg-white border border-slate-200 text-slate-800 max-w-md w-full p-5 sm:p-7 rounded-2xl relative shadow-2xl my-auto max-h-[92vh] overflow-y-auto overscroll-contain">
         
         {/* Close Button */}
         <button
