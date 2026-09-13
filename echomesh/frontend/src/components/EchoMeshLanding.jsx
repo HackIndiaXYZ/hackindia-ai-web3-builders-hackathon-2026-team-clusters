@@ -1883,7 +1883,11 @@ export default function EchoMeshLanding({
                         <span>{lang === 'hi' ? 'SOS डिस्ट्रेस पैकेट प्रसारित!' : 'SOS Distress Broadcast Sent!'}</span>
                       </div>
                       <div className="text-xs text-slate-700 font-mono space-y-1">
-                        <div>📍 GPS: 28.6280° N, 77.2140° E (Flood Sector 4)</div>
+                        <div>
+                          📍 GPS: {userLocation?.latitude
+                            ? `${userLocation.latitude.toFixed(4)}° N, ${userLocation.longitude.toFixed(4)}° E (Live Node GPS)`
+                            : '28.6280° N, 77.2140° E (Flood Sector 4)'}
+                        </div>
                         <div>📡 Received by: Node-01 (Neighbor, 12ms) · Node-04 (NDRF Rescue Boat, 28ms)</div>
                         <div className="text-[#0A1628] font-bold">Hop Latency: 14ms · 0 Cellular Towers Required</div>
                       </div>

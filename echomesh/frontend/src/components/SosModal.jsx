@@ -99,17 +99,22 @@ export default function SosModal({ isOpen, onClose }) {
 
     if (isOpen) {
       if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        const onOk = (pos) => {
+          setCachedCoords({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude
+          });
+        };
         navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            setCachedCoords({
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude
-            });
-          },
+          onOk,
           () => {
-            setCachedCoords({ latitude: fallbackLat, longitude: fallbackLng });
+            navigator.geolocation.getCurrentPosition(
+              onOk,
+              () => setCachedCoords({ latitude: fallbackLat, longitude: fallbackLng }),
+              { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 }
+            );
           },
-          { enableHighAccuracy: true, timeout: 4000, maximumAge: 0 }
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
         );
       } else {
         setCachedCoords({ latitude: fallbackLat, longitude: fallbackLng });

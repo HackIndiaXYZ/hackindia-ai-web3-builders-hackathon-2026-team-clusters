@@ -213,6 +213,38 @@ export default function LightDashboard({
   // Copy URL Feedback State
   const [copied, setCopied] = useState(false);
 
+  // Live Location Reverse Geocoded Name (e.g. area / city)
+  const [resolvedAddress, setResolvedAddress] = useState(null);
+
+  useEffect(() => {
+    if (!userLocation?.latitude || !userLocation?.longitude) return;
+    let isCancelled = false;
+
+    async function fetchAddress() {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${userLocation.latitude}&lon=${userLocation.longitude}&zoom=16&addressdetails=1`,
+          { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(4000) }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (isCancelled) return;
+        const addr = data.address || {};
+        const sub = addr.suburb || addr.neighbourhood || addr.residential || addr.road || addr.village || addr.town || addr.city_district;
+        const city = addr.city || addr.town || addr.state_district || addr.state;
+        const placeName = sub && city ? `${sub}, ${city}` : (sub || city || data.display_name?.split(',').slice(0, 2).join(','));
+        if (placeName) {
+          setResolvedAddress(placeName);
+        }
+      } catch (e) {
+        // Offline mode: use coordinates cleanly
+      }
+    }
+
+    fetchAddress();
+    return () => { isCancelled = true; };
+  }, [userLocation?.latitude, userLocation?.longitude]);
+
   // Survival Checklist (with localStorage persistence)
   const [checkedItems, setCheckedItems] = useState(() => {
     const saved = localStorage.getItem('echomesh_checked_items_v2');
@@ -620,6 +652,16 @@ export default function LightDashboard({
                 <span>🔒</span>
                 <span>{t.privateDefault.replace('\n', ' ')}</span>
               </div>
+              {userLocation?.latitude && (
+                <div
+                  onClick={() => requestLocation && requestLocation()}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 hover:border-emerald-400 cursor-pointer transition-colors"
+                  title="Click to refresh your live GPS location"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>📍 {resolvedAddress ? `${resolvedAddress} ` : ''}({userLocation.latitude.toFixed(4)}°, {userLocation.longitude.toFixed(4)}°)</span>
+                </div>
+              )}
             </div>
 
             {/* Active SOS Status Message */}
@@ -883,14 +925,45 @@ export default function LightDashboard({
 
           {/* 3-Column Info Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3">
-              <div className="info-icon">📍</div>
-              <div>
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t.infoLocation}</div>
-                <div className="text-xs sm:text-sm font-bold text-slate-900 mt-0.5">
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-start sm:items-center gap-3">
+              <div className="info-icon flex-shrink-0">📍</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-1 flex-wrap">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {t.infoLocation}
+                  </span>
+                  {userLocation?.latitude ? (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>{lang === 'hi' ? 'लाइव GPS' : 'LIVE GPS'}</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                      <span>⚠️ {lang === 'hi' ? 'GPS पेंडिंग' : 'GPS Pending'}</span>
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs sm:text-sm font-bold text-slate-900 mt-0.5 leading-snug">
                   {activeSosList[0]?.latitude
-                    ? `${activeSosList[0].latitude.toFixed(3)}°N, ${activeSosList[0].longitude.toFixed(3)}°E`
-                    : t.infoLocationVal}
+                    ? `${activeSosList[0].deviceName || 'आपदा पीड़ित'}: ${activeSosList[0].latitude.toFixed(4)}°N, ${activeSosList[0].longitude.toFixed(4)}°E`
+                    : (userLocation?.latitude
+                        ? `${resolvedAddress ? `${resolvedAddress} ` : ''}(${userLocation.latitude.toFixed(4)}°N, ${userLocation.longitude.toFixed(4)}°E)`
+                        : t.infoLocationVal)}
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => requestLocation && requestLocation()}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <span>🔄</span>
+                    <span>{lang === 'hi' ? 'स्थान रिफ्रेश करें' : 'Refresh Location'}</span>
+                  </button>
+                  {userLocation?.accuracy && (
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      ±{userLocation.accuracy}m
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

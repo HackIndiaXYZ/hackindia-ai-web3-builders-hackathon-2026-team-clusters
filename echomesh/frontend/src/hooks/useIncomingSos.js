@@ -43,36 +43,45 @@ export function useIncomingSos() {
       return;
     }
 
-    // High accuracy single acquisition with immediate offline fallback on HTTP
+    const onGpsSuccess = (pos) => {
+      setUserLocation({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: Math.round(pos.coords.accuracy || 5),
+        isGpsAcquired: true,
+        x: 48,
+        y: 58
+      });
+      setLocationStatus('acquired');
+    };
+
+    // 1. First attempt: High accuracy GPS with reasonable 10s timeout
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setUserLocation({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: Math.round(pos.coords.accuracy || 5),
-          isGpsAcquired: true,
-          x: 48,
-          y: 58
-        });
-        setLocationStatus('acquired');
-      },
+      onGpsSuccess,
       (err) => {
-        console.log('GPS browser policy fallback (HTTP):', err.message);
-        // Fall back to tactical mesh sector coordinates so the user is never stuck
-        setUserLocation({
-          latitude: fallbackLat,
-          longitude: fallbackLng,
-          accuracy: 15,
-          isGpsAcquired: false,
-          x: 48,
-          y: 58
-        });
-        setLocationStatus('prompting');
+        console.log('High accuracy GPS timed out/fallback, trying network/wifi positioning...', err.message);
+        // 2. Second attempt: Low accuracy cellular/wifi (fast & works indoors)
+        navigator.geolocation.getCurrentPosition(
+          onGpsSuccess,
+          (err2) => {
+            console.log('GPS browser policy fallback (HTTP/denied):', err2.message);
+            setUserLocation((prev) => ({
+              latitude: prev.latitude || fallbackLat,
+              longitude: prev.longitude || fallbackLng,
+              accuracy: 25,
+              isGpsAcquired: prev.isGpsAcquired || false,
+              x: 48,
+              y: 58
+            }));
+            setLocationStatus((prev) => (prev === 'acquired' ? 'acquired' : 'prompting'));
+          },
+          { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 }
+        );
       },
-      { enableHighAccuracy: true, timeout: 4000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
 
-    // Continuous live watch if available
+    // Continuous live watch if available to keep tracking accurate
     if (watchIdRef.current == null && navigator.geolocation) {
       try {
         watchIdRef.current = navigator.geolocation.watchPosition(
@@ -87,8 +96,10 @@ export function useIncomingSos() {
             });
             setLocationStatus('acquired');
           },
-          () => {},
-          { enableHighAccuracy: true, maximumAge: 2000 }
+          (wErr) => {
+            console.log('watchPosition notice:', wErr.message);
+          },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
         );
       } catch (e) {}
     }
