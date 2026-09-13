@@ -4,6 +4,7 @@ import { ROUTER_URL } from '../config.js';
 import { emergencyAudio } from '../utils/emergencyAudio.js';
 import { voiceAssistant } from '../utils/voiceAssistant.js';
 import ConnectedNetworkModal from './ConnectedNetworkModal.jsx';
+import MicPermissionModal from './MicPermissionModal.jsx';
 
 // ── Complete Bilingual Translations ──
 const TRANSLATIONS = {
@@ -49,6 +50,8 @@ const TRANSLATIONS = {
     svsKitDesc: 'Water, food, first-aid & emergency kit',
     svsDemoTitle: 'Mobile Hotspot Demo',
     svsDemoDesc: 'Open http://localhost:4000 on phone',
+    svsSeismicTitle: 'Seismic & Tremor Sensor',
+    svsSeismicDesc: 'Armed • Shake laptop to broadcast alert',
     tagCrit: 'Critical Alert',
     detailHeadDefault: 'Water level rising near Sector 4 bridge.',
     detailPDefault: 'Relayed by 10 peers over the mesh, 4 hops from your position. Avoid this route until further advisories clear it.',
@@ -105,6 +108,8 @@ const TRANSLATIONS = {
     svsKitDesc: 'पीने का पानी, सूखा भोजन, प्राथमिक उपचार किट',
     svsDemoTitle: 'मोबाइल हॉटस्पॉट डेमो',
     svsDemoDesc: 'फोन पर http://localhost:4000 खोलें',
+    svsSeismicTitle: 'भूकंप व शॉक सेंसर',
+    svsSeismicDesc: 'सक्रिय • लैपटॉप हिलाकर आपातकालीन अलर्ट भेजें',
     tagCrit: 'गंभीर अलर्ट',
     detailHeadDefault: 'सेक्टर 4 पुल के पास जलस्तर तेजी से बढ़ रहा है।',
     detailPDefault: 'मेश नेटवर्क द्वारा 10 पीयर्स व 4 हॉप्स से रिले हुआ। निकासी के लिए अन्य सुरक्षित गलियारों का उपयोग करें।',
@@ -157,6 +162,7 @@ export default function LightDashboard({
   meshStatus,
   incomingSosData,
   aiChatData,
+  seismicDetector,
   activeTab: controlledActiveTab,
   setActiveTab: setControlledActiveTab,
   onOpenSosModal,
@@ -242,6 +248,8 @@ export default function LightDashboard({
   // Automatic Voice Output State
   const [autoVoice, setAutoVoice] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isChatListening, setIsChatListening] = useState(false);
+  const [isMicGuideOpen, setIsMicGuideOpen] = useState(false);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -275,9 +283,64 @@ export default function LightDashboard({
     }
   }, [aiResponse, autoVoice]);
 
+  // When closing the AI Assistant modal, IMMEDIATELY halt speech & listening!
+  useEffect(() => {
+    if (activeOverlay !== 'ai') {
+      if (voiceAssistant) {
+        voiceAssistant.stopSpeaking();
+        voiceAssistant.stopListening();
+      }
+      setIsSpeaking(false);
+      setIsChatListening(false);
+    }
+  }, [activeOverlay]);
+
+  // Voice Typing for AI Question (Hindi & English)
+  const handleToggleChatVoice = async () => {
+    if (isChatListening) {
+      voiceAssistant.stopListening();
+      setIsChatListening(false);
+      return;
+    }
+
+    if (voiceAssistant) {
+      voiceAssistant.stopSpeaking();
+    }
+    setIsSpeaking(false);
+    setIsChatListening(true);
+
+    await voiceAssistant.startListening({
+      lang: lang === 'hi' ? 'hi-IN' : 'en-IN',
+      onResult: ({ transcript, isFinal }) => {
+        if (transcript) {
+          setChatInput(transcript);
+          if (isFinal) {
+            setIsChatListening(false);
+          }
+        }
+      },
+      onError: (errMsg, isBlocked) => {
+        setIsChatListening(false);
+        if (isBlocked || /not-allowed|denied|blocked|permission/i.test(errMsg || '')) {
+          setIsMicGuideOpen(true);
+        }
+      },
+      onEnd: () => {
+        setIsChatListening(false);
+      }
+    });
+  };
+
   const handleSendMessage = (textToSend) => {
     const text = (textToSend || chatInput).trim();
     if (!text) return;
+
+    // Immediately stop previous speech when asking a new question!
+    if (voiceAssistant) {
+      voiceAssistant.stopSpeaking();
+      voiceAssistant.stopListening();
+    }
+    setIsSpeaking(false);
 
     const userMsg = {
       id: Date.now(),
@@ -299,6 +362,12 @@ export default function LightDashboard({
   const handleSurvivalKitAi = (itemId) => {
     const advice = SURVIVAL_KIT_ADVICE[itemId];
     if (!advice) return;
+
+    if (voiceAssistant) {
+      voiceAssistant.stopSpeaking();
+      voiceAssistant.stopListening();
+    }
+    setIsSpeaking(false);
 
     const userPrompt = lang === 'hi'
       ? `${advice.titleHi} के बारे में तुरंत निर्देश दें`
@@ -359,11 +428,14 @@ export default function LightDashboard({
         ? { latitude: userLocation.latitude, longitude: userLocation.longitude }
         : { latitude: 28.62, longitude: 77.21 };
 
+      const myNodeName = (typeof localStorage !== 'undefined' && localStorage.getItem('echomesh_sos_name')) || 'Mobile Survivor (Live Node)';
+
       await fetch(`${ROUTER_URL}/sos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sender: 'Survivor-Node',
+          deviceName: myNodeName,
+          sender: myNodeName,
           latitude: coords.latitude,
           longitude: coords.longitude,
           emergencyType: 'critical',
@@ -585,6 +657,27 @@ export default function LightDashboard({
             <span className="text-xs text-slate-400 mt-4 font-semibold uppercase tracking-wider">
               {isSosActive ? '🚨 Siren On • Click to cancel' : 'Tap button to broadcast distress signal'}
             </span>
+
+            <div className="mt-3 flex flex-col items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onOpenSosModal}
+                className="px-4 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-[#DC3545] border border-red-200 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs active:scale-95"
+                title="Speak emergency message and broadcast"
+              >
+                <span className="text-base">🎙️</span>
+                <span>{lang === 'hi' ? 'बोलकर SOS संदेश भेजें (Voice SOS)' : 'Speak Emergency SOS (Voice)'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMicGuideOpen(true)}
+                className="text-[11px] text-slate-400 hover:text-white underline font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                title="ब्राउज़र में माइक अनब्लॉक करने की विधि"
+              >
+                <span>🔓</span>
+                <span>{lang === 'hi' ? 'माइक ब्लॉक है? चालू कैसे करें' : 'Mic blocked? How to enable'}</span>
+              </button>
+            </div>
           </div>
         </section>
 
@@ -724,6 +817,38 @@ export default function LightDashboard({
               <div className="chev group-hover:translate-x-1 transition-transform">{copied ? '✓' : '📋'}</div>
             </div>
 
+            {/* Service 7: Seismic / Tremor Sensor (Shake Demo) */}
+            <div
+              id="service-seismic"
+              onClick={() => {
+                if (seismicDetector?.triggerSeismicAlert) {
+                  seismicDetector.triggerSeismicAlert();
+                }
+              }}
+              className="p-5 rounded-2xl border border-amber-200 hover:border-amber-500 hover:shadow-md transition-all cursor-pointer flex items-center gap-4 group bg-gradient-to-r from-amber-50/50 to-orange-50/30"
+              title="Click or Shake laptop to trigger seismic alert"
+            >
+              <div className="svc-icon red group-hover:scale-110 transition-transform bg-amber-100 text-amber-600 border border-amber-300">
+                ⚡
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-sm text-[#0A0A0A] flex items-center gap-2">
+                  <span>{t.svsSeismicTitle}</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">
+                    {seismicDetector?.isArmed ? 'ARMED' : 'MUTED'}
+                  </span>
+                </div>
+                <div className="text-xs text-amber-800 mt-0.5 truncate font-medium">
+                  {seismicDetector?.isTriggering
+                    ? '🚨 Broadcasting tremor alert to all devices...'
+                    : t.svsSeismicDesc}
+                </div>
+              </div>
+              <div className="chev group-hover:translate-x-1 transition-transform text-amber-600 font-bold">
+                ⚡
+              </div>
+            </div>
+
           </div>
         </section>
 
@@ -827,7 +952,19 @@ export default function LightDashboard({
 
       {/* ── MODAL 1: OFFLINE AI ASSISTANT ── */}
       {activeOverlay === 'ai' && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              if (voiceAssistant) {
+                voiceAssistant.stopSpeaking();
+                voiceAssistant.stopListening();
+              }
+              setIsSpeaking(false);
+              setActiveOverlay(null);
+            }
+          }}
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+        >
           <div className="bg-white rounded-3xl w-full max-w-2xl h-[85vh] flex flex-col overflow-hidden shadow-2xl border border-slate-200">
             <div className="bg-[#0A0A0A] text-white px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -843,6 +980,21 @@ export default function LightDashboard({
               </div>
 
               <div className="flex items-center gap-2">
+                {isSpeaking && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (voiceAssistant) voiceAssistant.stopSpeaking();
+                      setIsSpeaking(false);
+                    }}
+                    className="text-xs px-2.5 py-1 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-black border border-rose-400 cursor-pointer animate-pulse flex items-center gap-1 shadow-xs"
+                    title="Stop AI speech immediately"
+                  >
+                    <span>⏹️</span>
+                    <span>{lang === 'hi' ? 'आवाज़ रोकें' : 'Stop Speaking'}</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setAutoVoice(prev => !prev)}
@@ -854,8 +1006,16 @@ export default function LightDashboard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveOverlay(null)}
+                  onClick={() => {
+                    if (voiceAssistant) {
+                      voiceAssistant.stopSpeaking();
+                      voiceAssistant.stopListening();
+                    }
+                    setIsSpeaking(false);
+                    setActiveOverlay(null);
+                  }}
                   className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-sm font-bold cursor-pointer"
+                  title="Close AI Assistant & Stop Speech"
                 >
                   ✕
                 </button>
@@ -930,57 +1090,121 @@ export default function LightDashboard({
               ))}
             </div>
 
-            {/* Message Input Form */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendMessage();
-              }}
-              className="p-4 bg-white border-t border-slate-200 flex gap-2"
-            >
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder={lang === 'hi' ? 'कोई आपातकालीन संदेश या प्रश्न लिखें...' : 'Ask an emergency question...'}
-                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm focus:outline-none focus:border-black bg-slate-50"
-              />
-              <button
-                type="submit"
-                disabled={!chatInput.trim() || aiLoading}
-                className="px-5 py-2.5 rounded-xl bg-[#0A0A0A] hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs sm:text-sm cursor-pointer"
+            {/* Message Input Form with Integrated Voice Speak Button */}
+            <div className="p-3 sm:p-4 bg-white border-t border-slate-200 space-y-2">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendMessage();
+                }}
+                className="flex items-center gap-2"
               >
-                {lang === 'hi' ? 'भेजें' : 'Send'}
-              </button>
-            </form>
+                <div className={`flex-1 flex items-center rounded-xl border bg-slate-50 transition-all ${
+                  isChatListening ? 'border-red-400 ring-2 ring-red-400/30' : 'border-slate-300 focus-within:border-black'
+                }`}>
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder={
+                      isChatListening
+                        ? (lang === 'hi' ? '🎙️ सुन रहे हैं... बोलिए...' : '🎙️ Listening... Speak now...')
+                        : (lang === 'hi' ? 'कोई आपातकालीन संदेश लिखें या बोलें...' : 'Ask an emergency question or speak...')
+                    }
+                    className="flex-1 px-4 py-2.5 bg-transparent border-none text-xs sm:text-sm focus:outline-none text-slate-900"
+                  />
+                  {chatInput && (
+                    <button
+                      type="button"
+                      onClick={() => setChatInput('')}
+                      className="px-2.5 text-slate-400 hover:text-slate-700 text-xs font-bold cursor-pointer"
+                      title="Clear text"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Voice Speak Button */}
+                <button
+                  type="button"
+                  onClick={handleToggleChatVoice}
+                  className={`px-3 sm:px-4 py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs active:scale-95 ${
+                    isChatListening
+                      ? 'bg-[#DC3545] text-white border-red-500 animate-pulse shadow-md ring-2 ring-red-400/40'
+                      : 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-900'
+                  }`}
+                  title={lang === 'hi' ? 'माइक से बोलकर पूछें' : 'Speak using microphone'}
+                >
+                  <span className="text-sm">{isChatListening ? '🔴' : '🎙️'}</span>
+                  <span className="inline">
+                    {isChatListening
+                      ? (lang === 'hi' ? 'रोकें' : 'Stop')
+                      : (lang === 'hi' ? 'बोलें' : 'Speak')}
+                  </span>
+                </button>
+
+                {/* Send Button */}
+                <button
+                  type="submit"
+                  disabled={!chatInput.trim() || aiLoading}
+                  className="px-4 sm:px-5 py-2.5 rounded-xl bg-[#0A0A0A] hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs sm:text-sm cursor-pointer shrink-0 shadow-2xs"
+                >
+                  {lang === 'hi' ? 'भेजें' : 'Send'}
+                </button>
+              </form>
+
+              {/* Mic Unblock Helper Bar */}
+              <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
+                <span className="flex items-center gap-1">
+                  <span>💡</span>
+                  <span>{lang === 'hi' ? 'हिंदी व English दोनों में बोल सकते हैं' : 'Supports voice in Hindi & English'}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsMicGuideOpen(true)}
+                  className="text-amber-800 hover:text-amber-950 font-bold underline flex items-center gap-1 cursor-pointer"
+                >
+                  <span>🔓</span>
+                  <span>{lang === 'hi' ? 'माइक ब्लॉक है? चालू करें' : 'Mic blocked? Unblock guide'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* ── MODAL 2: TACTICAL MESH MAP ── */}
       {activeOverlay === 'map' && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden shadow-2xl border border-slate-200">
-            <div className="bg-[#0A0A0A] text-white px-6 py-4 flex items-center justify-between">
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto animate-fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setActiveOverlay(null);
+          }}
+        >
+          <div className="bg-white rounded-3xl w-full max-w-5xl my-auto flex flex-col overflow-hidden shadow-2xl border border-slate-200 max-h-[94vh]">
+            <div className="bg-[#0A0A0A] text-white px-5 sm:px-6 py-3.5 flex items-center justify-between border-b border-neutral-800 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <span className="text-xl">🗺️</span>
                 <div>
-                  <h3 className="text-base font-bold font-archivo leading-tight">
+                  <h3 className="text-sm sm:text-base font-bold font-archivo leading-tight">
                     {lang === 'hi' ? 'टैक्टिकल रडार व मेश मैप' : 'Tactical Mesh Map & Radar'}
                   </h3>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-[11px] text-slate-400">
                     {displayNodeCount} {lang === 'hi' ? 'नोड्स जुड़े हुए हैं' : 'nodes connected on local mesh'}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setActiveOverlay(null)}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-sm font-bold cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-red-600 hover:text-white text-slate-200 flex items-center gap-1 text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95"
+                title="Close Map (✕)"
               >
-                ✕
+                <span>✕</span>
+                <span>{lang === 'hi' ? 'मैप बंद करें' : 'Close Map'}</span>
               </button>
             </div>
-            <div className="flex-1 w-full relative">
+            <div className="p-3 sm:p-5 overflow-y-auto flex-1 w-full bg-slate-50">
               <OfflineMap
                 devices={devices}
                 peers={peers}
@@ -988,6 +1212,11 @@ export default function LightDashboard({
                 connectedClients={connectedClients}
                 userLocation={userLocation}
                 activeSosList={activeSosList}
+                onClose={() => setActiveOverlay(null)}
+                onOpenBluetoothModal={() => {
+                  setActiveOverlay(null);
+                  onOpenBleModal();
+                }}
               />
             </div>
           </div>
@@ -1129,6 +1358,17 @@ export default function LightDashboard({
         lang={lang}
         onOpenBleModal={onOpenBleModal}
         onNavigateToMap={() => setActiveOverlay('map')}
+      />
+
+      {/* ── MODAL 6: MICROPHONE PERMISSION UNBLOCK GUIDE ── */}
+      <MicPermissionModal
+        isOpen={isMicGuideOpen}
+        onClose={() => setIsMicGuideOpen(false)}
+        onSelectPreset={(txt) => {
+          setChatInput(txt);
+          setActiveOverlay('ai');
+        }}
+        lang={lang}
       />
 
     </div>

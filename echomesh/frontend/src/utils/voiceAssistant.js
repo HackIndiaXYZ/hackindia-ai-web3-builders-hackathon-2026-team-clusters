@@ -52,11 +52,11 @@ class VoiceAssistantEngine {
   // Start speech-to-text recognition in Hindi / English with mic permissions & fallback
   async startListening({ onResult, onError, onEnd, lang = 'hi-IN' }) {
     if (!this.isSupported()) {
-      if (onError) onError('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Brave.');
+      if (onError) onError('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Brave.', false);
       return;
     }
 
-    // 1. Explicitly prompt user for Microphone Permission via getUserMedia
+    // 1. Explicitly prompt user for Microphone Permission via getUserMedia if available
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -65,11 +65,12 @@ class VoiceAssistantEngine {
       }
     } catch (micErr) {
       this.isListening = false;
+      const isBlocked = micErr.name === 'NotAllowedError' || micErr.name === 'PermissionDeniedError';
       if (onError) {
-        if (micErr.name === 'NotAllowedError' || micErr.name === 'PermissionDeniedError') {
-          onError('Microphone access denied. Please click the mic icon in your browser address bar to allow mic access.');
+        if (isBlocked) {
+          onError('Microphone access denied. Please allow mic in browser address bar (🔒 icon).', true);
         } else {
-          onError('Microphone hardware not detected or in use by another app.');
+          onError('Microphone hardware not detected or in use by another app.', false);
         }
       }
       return;
@@ -119,13 +120,19 @@ class VoiceAssistantEngine {
           return;
         }
         this.isListening = false;
+        const isBlocked = event.error === 'not-allowed';
         if (onError) {
-          if (event.error === 'not-allowed') {
-            onError('Microphone permission blocked. Enable mic in browser settings.');
+          if (isBlocked) {
+            const isHttp = typeof window !== 'undefined' && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+            if (isHttp) {
+              onError('फोन में अनुमति ऑन है, लेकिन Chrome HTTP पर माइक रोकता है। कृपया HTTPS (पोर्ट 4443) लिंक खोलें या 1-टैप संदेश चुनें।', true);
+            } else {
+              onError('Microphone permission blocked. Click URL bar 🔒/tune icon to allow.', true);
+            }
           } else if (event.error === 'language-not-supported') {
-            onError('Hindi voice pack missing in browser. Try speaking in English.');
+            onError('Hindi voice pack missing in browser. Try speaking in English.', false);
           } else {
-            onError(`Voice error: ${event.error}`);
+            onError(`Voice error: ${event.error}`, false);
           }
         }
       };
@@ -138,7 +145,34 @@ class VoiceAssistantEngine {
       this.recognition.start();
     } catch (err) {
       this.isListening = false;
-      if (onError) onError(err.message || 'Could not start microphone');
+      const isBlocked = /not-allowed|permission/i.test(err.message || '');
+      if (onError) onError(err.message || 'Could not start microphone', isBlocked);
+    }
+  }
+
+  async requestPermission() {
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+        return { success: true };
+      }
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        return new Promise((resolve) => {
+          try {
+            const sr = new SpeechRecognition();
+            sr.onstart = () => { sr.stop(); resolve({ success: true }); };
+            sr.onerror = (e) => { resolve({ success: false, error: e.error }); };
+            sr.start();
+          } catch (e) {
+            resolve({ success: false, error: e.message });
+          }
+        });
+      }
+      return { success: false, error: 'not_supported' };
+    } catch (err) {
+      return { success: false, error: err.name || err.message };
     }
   }
 

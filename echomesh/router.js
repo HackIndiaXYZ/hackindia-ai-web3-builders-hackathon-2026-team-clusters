@@ -3,6 +3,8 @@ const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
 const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const os = require('os');
 const WebSocket = require('ws');
 const bonjourLib = require('bonjour');
@@ -24,6 +26,25 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+// ── Optional HTTPS Server on port 4443 for Mobile Secure Context (Microphone / Web Speech) ──
+let httpsServer = null;
+let httpsWss = null;
+const HTTPS_PORT = process.env.HTTPS_PORT || 4443;
+const keyPath = path.join(__dirname, 'key.pem');
+const certPath = path.join(__dirname, 'cert.pem');
+if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+  try {
+    httpsServer = https.createServer({
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath)
+    }, app);
+    httpsWss = new WebSocket.Server({ server: httpsServer });
+    console.log(`[HTTPS] Initialized SSL support on port ${HTTPS_PORT} (Secure Context enabled)`);
+  } catch (sslErr) {
+    console.warn('[HTTPS] Could not initialize SSL server:', sslErr.message);
+  }
+}
+
 const PORT = process.env.PORT || 4000;
 const NODE_ID = process.env.NODE_ID || `${os.hostname()}-${PORT}`;
 const ROLE = 'peer';
@@ -35,7 +56,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type']
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 
 // Serve static files (sos.html, rescue-dashboard.html) from /public
 app.use(express.static(path.join(__dirname, 'public')));
@@ -365,6 +386,13 @@ async function handlePeerMessage(msg, ws, peerKey) {
       });
       sosLog.push(entry);
 
+      // Notify local frontend UI clients in real-time
+      notifyFrontendClients({
+        type: 'SOS_BROADCAST',
+        entry,
+        originNode: msg.originNode || NODE_ID
+      });
+
       // Relay to local specialty devices
       await Promise.allSettled(
         DEVICES.map(device =>
@@ -588,7 +616,7 @@ function connectToPeer(host, port, metadata = {}) {
 }
 
 // Inbound WebSocket connection handler (for browser UI clients and peer mesh servers)
-wss.on('connection', (ws, req) => {
+function handleInboundWsConnection(ws, req) {
   const remoteIp = req.socket.remoteAddress ? req.socket.remoteAddress.replace(/^.*:/, '') : '127.0.0.1';
   let peerKey = `${remoteIp}:${req.socket.remotePort}`;
   let peerNodeId = `peer-${peerKey}`;
@@ -707,7 +735,15 @@ wss.on('connection', (ws, req) => {
     const peer = peers.get(peerKey);
     if (peer) peer.status = 'offline';
   });
-});
+}
+
+// Attach inbound handler to HTTP WebSocket server
+wss.on('connection', handleInboundWsConnection);
+
+// Attach inbound handler to HTTPS WebSocket server if active
+if (httpsWss) {
+  httpsWss.on('connection', handleInboundWsConnection);
+}
 
 // ══════════════════════════════════════════════════════════════
 //  mDNS PEER DISCOVERY (BONJOUR)
@@ -1316,42 +1352,54 @@ const SOS_COOLDOWN_MS = 30000; // 30 seconds
 // ---- POST /sos — create SOS entry and broadcast to all devices ----
 app.post('/sos', async (req, res) => {
   try {
-    const { deviceName, latitude, longitude, message } = req.body;
+    const { latitude, longitude, message, emergencyType, audioData } = req.body;
+    const rawName = req.body.deviceName || req.body.sender || req.body.nodeId || 'Survivor-Mobile';
+    const cleanName = (typeof rawName === 'string' && rawName.trim()) ? rawName.trim() : 'Survivor-Mobile';
 
-    if (!deviceName || typeof deviceName !== 'string' || !deviceName.trim()) {
-      return res.status(400).json({ error: 'Missing "deviceName" field.' });
-    }
-
-    // Rate-limit check
-    const lastSos = sosRateLimit.get(deviceName.trim());
+    // Rate-limit check: fast 2s cooldown to prevent demo lockouts
+    const effectiveCooldown = (emergencyType === 'seismic') ? 3000 : 2000;
+    const clientKey = `${cleanName}_${req.ip || 'peer'}`;
+    const lastSos = sosRateLimit.get(clientKey);
     const now = Date.now();
-    if (lastSos && (now - lastSos) < SOS_COOLDOWN_MS) {
-      const waitSec = Math.ceil((SOS_COOLDOWN_MS - (now - lastSos)) / 1000);
+    if (lastSos && (now - lastSos) < effectiveCooldown) {
+      const waitSec = Math.ceil((effectiveCooldown - (now - lastSos)) / 1000);
       return res.status(429).json({
         error: `SOS rate limited. Please wait ${waitSec}s before sending another.`,
         retryAfterSeconds: waitSec
       });
     }
 
-    // Create SOS entry
+    // Assign safe coordinates with realistic sector offset if GPS is null/0
+    const safeLat = (typeof latitude === 'number' && !isNaN(latitude) && latitude !== 0)
+      ? latitude
+      : 28.6139 + (Math.random() - 0.5) * 0.008;
+    const safeLng = (typeof longitude === 'number' && !isNaN(longitude) && longitude !== 0)
+      ? longitude
+      : 77.2090 + (Math.random() - 0.5) * 0.008;
+
+    // Create SOS entry with unique ID and dual deviceName/sender keys
     const sosEntry = {
-      id: sosIdCounter++,
-      deviceName: deviceName.trim(),
-      latitude: latitude || null,
-      longitude: longitude || null,
-      message: message || 'Emergency! Need help!',
+      id: Date.now(),
+      deviceName: cleanName,
+      sender: cleanName,
+      emergencyType: emergencyType || 'critical',
+      latitude: safeLat,
+      longitude: safeLng,
+      message: (message && typeof message === 'string' && message.trim()) ? message.trim() : '🚨 Emergency! Need immediate rescue assistance!',
+      audioData: audioData || null,
       timestamp: new Date().toISOString(),
       status: 'ACTIVE'
     };
 
     sosLog.push(sosEntry);
-    sosRateLimit.set(deviceName.trim(), now);
+    sosRateLimit.set(clientKey, now);
 
     // ── Blockchain: Record SOS as a signed block ──
     try {
       echoChain.addBlock('SOS', {
         sosId: sosEntry.id,
         deviceName: sosEntry.deviceName,
+        emergencyType: sosEntry.emergencyType,
         latitude: sosEntry.latitude,
         longitude: sosEntry.longitude,
         message: sosEntry.message,
@@ -1361,7 +1409,7 @@ app.post('/sos', async (req, res) => {
       log('[Blockchain] SOS block error', { error: bcErr.message });
     }
 
-    log('🚨 SOS RECEIVED', { id: sosEntry.id, from: sosEntry.deviceName, coords: `${sosEntry.latitude},${sosEntry.longitude}` });
+    log('🚨 SOS RECEIVED', { id: sosEntry.id, type: sosEntry.emergencyType, from: sosEntry.deviceName, coords: `${sosEntry.latitude},${sosEntry.longitude}` });
 
     // 1. Broadcast to local devices using Promise.allSettled
     const broadcastResults = await Promise.allSettled(
@@ -1381,6 +1429,13 @@ app.post('/sos', async (req, res) => {
       relayedBy: NODE_ID,
       ttl: MESH_MAX_TTL,
       visitedNodes: [NODE_ID]
+    });
+
+    // 3. Notify local frontend browser UI clients in real-time
+    notifyFrontendClients({
+      type: 'SOS_BROADCAST',
+      entry: sosEntry,
+      originNode: NODE_ID
     });
 
     log('SOS broadcast complete', { id: sosEntry.id, notified, failed, meshPeers: peers.size });
@@ -1451,6 +1506,9 @@ function handleShutdown(signal) {
         peer.ws.terminate();
       } catch (e) {}
     }
+    if (httpsServer) {
+      try { httpsServer.close(); } catch (e) {}
+    }
     server.close(() => {
       process.exit(0);
     });
@@ -1484,6 +1542,13 @@ server.listen(PORT, '0.0.0.0', async () => {
     }
   }
 
+  // Start HTTPS server if configured for mobile secure context
+  if (httpsServer) {
+    httpsServer.listen(HTTPS_PORT, '0.0.0.0', () => {
+      console.log(`🔒 [HTTPS Secure Context Server] Active on port ${HTTPS_PORT}`);
+    });
+  }
+
   console.log('');
   console.log('╔══════════════════════════════════════════════════════╗');
   console.log('║   📡 EchoMesh — Server Started                       ║');
@@ -1493,8 +1558,16 @@ server.listen(PORT, '0.0.0.0', async () => {
     const padded = `http://${ip}:${PORT}`.padEnd(46);
     console.log(`║   Network: ${padded}║`);
   });
+  if (httpsServer) {
+    console.log('╠══════════════════════════════════════════════════════╣');
+    console.log('║   🔒 MOBILE PHONE (Native Mic & Speech Context):     ║');
+    ips.forEach(ip => {
+      const padded = `https://${ip}:${HTTPS_PORT}`.padEnd(43);
+      console.log(`║      👉 ${padded} ║`);
+    });
+  }
   console.log('╠══════════════════════════════════════════════════════╣');
-  console.log('║   📱 Phone: connect to laptop hotspot then open      ║');
+  console.log('║   📱 Phone (HTTP):                                   ║');
   ips.forEach(ip => {
     const padded = `http://${ip}:${PORT}`.padEnd(46);
     console.log(`║      👉 ${padded}    ║`);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { ROUTER_URL } from '../config.js';
 
@@ -98,6 +98,74 @@ function FlyToUser({ center }) {
   return null;
 }
 
+// ── Interactive Tactical Leaflet Map Controls (Zoom In, Zoom Out, Recenter) ──
+function TacticalMapControls({ userPos, defaultCenter }) {
+  const map = useMap();
+
+  return (
+    <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5 shadow-lg select-none pointer-events-auto">
+      {/* Zoom In Button */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          map.zoomIn();
+        }}
+        className="w-10 h-10 rounded-xl bg-white/95 hover:bg-white text-slate-800 hover:text-[#0D6EFD] border border-slate-200 flex items-center justify-center text-lg font-black shadow-md backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        title="Zoom In (+)"
+        aria-label="Zoom In"
+      >
+        ➕
+      </button>
+
+      {/* Zoom Out Button */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          map.zoomOut();
+        }}
+        className="w-10 h-10 rounded-xl bg-white/95 hover:bg-white text-slate-800 hover:text-[#0D6EFD] border border-slate-200 flex items-center justify-center text-lg font-black shadow-md backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        title="Zoom Out (-)"
+        aria-label="Zoom Out"
+      >
+        ➖
+      </button>
+
+      {/* Recenter to My GPS Location */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          const target = userPos || defaultCenter;
+          if (target) {
+            map.flyTo(target, 16, { duration: 1.2 });
+          }
+        }}
+        className="w-10 h-10 rounded-xl bg-white/95 hover:bg-blue-50 text-[#0D6EFD] border border-blue-200 flex items-center justify-center text-base font-bold shadow-md backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        title="Center to My GPS Location (📍)"
+        aria-label="My Location"
+      >
+        📍
+      </button>
+
+      {/* Reset Zoom / Full View */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          map.flyTo(userPos || defaultCenter, 13, { duration: 1.0 });
+        }}
+        className="w-10 h-10 rounded-xl bg-white/95 hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center text-[10px] font-black shadow-md backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        title="Reset Map Zoom (1x)"
+        aria-label="Reset Zoom"
+      >
+        1x
+      </button>
+    </div>
+  );
+}
+
 // ── Pre-downloaded emergency points (will be placed relative to user GPS) ──
 function getEmergencyPoints(userLat, userLng) {
   return [
@@ -160,7 +228,18 @@ function getEmergencyPoints(userLat, userLng) {
   ];
 }
 
-export default function OfflineMap({ devices = [], peers = [], bluetoothPeers = [], connectedClients = [], routerOnline = true, nodeInfo = null, defaultLayer = 'all', onOpenBluetoothModal = null, onBack = null }) {
+export default function OfflineMap({
+  devices = [],
+  peers = [],
+  bluetoothPeers = [],
+  connectedClients = [],
+  routerOnline = true,
+  nodeInfo = null,
+  defaultLayer = 'all',
+  onOpenBluetoothModal = null,
+  onBack = null,
+  onClose = null
+}) {
   const [selectedPoint, setSelectedPoint] = useState(null);
   const [filter, setFilter] = useState(defaultLayer);
   const [sosAlerts, setSosAlerts] = useState([]);
@@ -312,21 +391,70 @@ export default function OfflineMap({ devices = [], peers = [], bluetoothPeers = 
               <span>🔵</span> + Link BLE Phone
             </button>
           )}
+
+          {/* ── Prominent Map Close / Dismiss Cross Button ── */}
+          {(onClose || onBack) && (
+            <button
+              type="button"
+              onClick={onClose || onBack}
+              className="px-3.5 py-1.5 rounded-xl bg-rose-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 text-xs font-black transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-1.5 shadow-xs"
+              title="Close Map (मैप बंद करें)"
+            >
+              <span>✕</span>
+              <span>मैप बंद करें / Close</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Main Map + Detail Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Real Leaflet Map (2 cols) */}
-        <div className="lg:col-span-2 relative rounded-2xl overflow-hidden border" style={{ borderColor: 'var(--border-subtle)', height: '500px' }}>
+        <div className="lg:col-span-2 relative rounded-2xl overflow-hidden border" style={{ borderColor: 'var(--border-subtle)', height: '520px' }}>
+          
+          {/* Floating Tactical Zero-Internet Radar HUD Overlay */}
+          <div className="absolute top-3 left-3 z-[1000] pointer-events-none flex flex-col gap-1.5 animate-fade-in">
+            <div className="px-3.5 py-1.5 rounded-xl bg-[#07111e]/90 border border-[#39D98A]/50 text-white backdrop-blur-md shadow-xl flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#39D98A] animate-ping" />
+              <span className="text-xs font-black tracking-wider uppercase text-[#39D98A]">
+                TACTICAL MESH RADAR · ZERO-INTERNET FIELD MODE
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">| Offline P2P Grid</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-cyan-300 bg-[#07111e]/85 px-3 py-1 rounded-lg border border-cyan-500/30 w-fit backdrop-blur-sm shadow-md">
+              <span className="text-cyan-400 font-bold">🎯 Radar Range Rings:</span>
+              <span className="text-cyan-300">200m</span> · 
+              <span className="text-blue-300">500m</span> · 
+              <span className="text-emerald-300">1.0km</span> · 
+              <span className="text-slate-400">2.0km Perimeter</span>
+            </div>
+          </div>
+
           <MapContainer
             center={mapCenter}
             zoom={14}
-            style={{ height: '100%', width: '100%', background: '#0f172a' }}
+            style={{
+              height: '100%',
+              width: '100%',
+              backgroundColor: '#07111e',
+              backgroundImage: `
+                radial-gradient(circle at center, rgba(6, 182, 212, 0.16) 0%, rgba(7, 17, 30, 0.95) 75%),
+                linear-gradient(rgba(14, 165, 233, 0.14) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(14, 165, 233, 0.14) 1px, transparent 1px),
+                linear-gradient(rgba(16, 185, 129, 0.06) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(16, 185, 129, 0.06) 1px, transparent 1px)
+              `,
+              backgroundSize: '100% 100%, 80px 80px, 80px 80px, 20px 20px, 20px 20px'
+            }}
             zoomControl={false}
             attributionControl={true}
+            scrollWheelZoom={true}
+            doubleClickZoom={true}
           >
-            {/* Offline-first map: tiles try to load, fall back gracefully to dark bg */}
+            {/* Interactive Tactile Zoom & Recenter Controls */}
+            <TacticalMapControls userPos={userPos} defaultCenter={defaultCenter} />
+
+            {/* Offline-first map: tiles try to load, fall back gracefully to dark tactical grid */}
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -337,34 +465,124 @@ export default function OfflineMap({ devices = [], peers = [], bluetoothPeers = 
             {/* Fly to user when GPS acquired */}
             {userPos && <FlyToUser center={userPos} />}
 
+            {/* Concentric Tactical Sonar Radar Range Rings (Always Visible Offline) */}
+            {userPos && (
+              <>
+                {/* 200m Inner Perimeter Ring */}
+                <Circle
+                  center={userPos}
+                  radius={200}
+                  pathOptions={{
+                    color: '#06b6d4',
+                    fillColor: '#06b6d4',
+                    fillOpacity: 0.05,
+                    weight: 1.5,
+                    dashArray: '6, 6'
+                  }}
+                />
+                {/* 500m Mid Recon Zone Ring */}
+                <Circle
+                  center={userPos}
+                  radius={500}
+                  pathOptions={{
+                    color: '#3b82f6',
+                    fillColor: '#3b82f6',
+                    fillOpacity: 0.03,
+                    weight: 1.5,
+                    dashArray: '8, 8'
+                  }}
+                />
+                {/* 1000m Tactical P2P Hop Ring */}
+                <Circle
+                  center={userPos}
+                  radius={1000}
+                  pathOptions={{
+                    color: '#10b981',
+                    fillColor: '#10b981',
+                    fillOpacity: 0.015,
+                    weight: 1.5,
+                    dashArray: '10, 10'
+                  }}
+                />
+                {/* 2000m Extended Mesh Perimeter */}
+                <Circle
+                  center={userPos}
+                  radius={2000}
+                  pathOptions={{
+                    color: '#64748b',
+                    fillColor: 'transparent',
+                    weight: 1,
+                    dashArray: '12, 12'
+                  }}
+                />
+              </>
+            )}
+
+            {/* Offline High-Ground Safe Zone Polygon */}
+            {userPos && (
+              <Polygon
+                positions={[
+                  [userPos[0] + 0.007, userPos[1] + 0.005],
+                  [userPos[0] + 0.011, userPos[1] + 0.009],
+                  [userPos[0] + 0.009, userPos[1] + 0.013],
+                  [userPos[0] + 0.005, userPos[1] + 0.009]
+                ]}
+                pathOptions={{
+                  color: '#10b981',
+                  fillColor: '#10b981',
+                  fillOpacity: 0.12,
+                  weight: 2,
+                  dashArray: '4, 4'
+                }}
+              >
+                <Popup>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px' }}>
+                    <strong style={{ color: '#10b981' }}>🛡️ High Ground Safe Zone</strong><br />
+                    <span>Designated Evacuation & Shelter Perimeter</span>
+                  </div>
+                </Popup>
+              </Polygon>
+            )}
+
+            {/* Offline River Flood Threat Basin Polygon */}
+            {userPos && (
+              <Polygon
+                positions={[
+                  [userPos[0] - 0.004, userPos[1] - 0.012],
+                  [userPos[0] - 0.002, userPos[1] - 0.006],
+                  [userPos[0] - 0.008, userPos[1] - 0.004],
+                  [userPos[0] - 0.011, userPos[1] - 0.010]
+                ]}
+                pathOptions={{
+                  color: '#ef4444',
+                  fillColor: '#ef4444',
+                  fillOpacity: 0.10,
+                  weight: 1.5,
+                  dashArray: '6, 4'
+                }}
+              >
+                <Popup>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px' }}>
+                    <strong style={{ color: '#ef4444' }}>⚠️ Flood Hazard Sector</strong><br />
+                    <span>Low-lying river basin — Inundation risk</span>
+                  </div>
+                </Popup>
+              </Polygon>
+            )}
+
             {/* User location marker */}
             {userPos && (
               <Marker position={userPos} icon={createUserIcon()}>
                 <Popup>
                   <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#1e293b', minWidth: '180px' }}>
-                    <strong style={{ fontSize: '14px' }}>📍 Your Location</strong><br />
+                    <strong style={{ fontSize: '14px' }}>📍 Your Location (Master Node)</strong><br />
                     <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>
                       {userPos[0].toFixed(6)}°, {userPos[1].toFixed(6)}°
                     </span><br />
-                    <em style={{ color: '#64748b' }}>GPS: High Accuracy</em>
+                    <em style={{ color: '#06b6d4', fontWeight: 600 }}>P2P Mesh Beacon Active</em>
                   </div>
                 </Popup>
               </Marker>
-            )}
-
-            {/* User accuracy radius */}
-            {userPos && (
-              <Circle
-                center={userPos}
-                radius={100}
-                pathOptions={{
-                  color: '#22d3ee',
-                  fillColor: '#22d3ee',
-                  fillOpacity: 0.06,
-                  weight: 1,
-                  dashArray: '4,4'
-                }}
-              />
             )}
 
             {/* Emergency POI markers */}

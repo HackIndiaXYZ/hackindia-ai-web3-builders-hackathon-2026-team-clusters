@@ -7,6 +7,9 @@ import EchoMeshLanding from './components/EchoMeshLanding.jsx';
 import { useMeshStatus } from './hooks/useMeshStatus.js';
 import { useIncomingSos } from './hooks/useIncomingSos.js';
 import { useAiChat } from './hooks/useAiChat.js';
+import { useSeismicDetector } from './hooks/useSeismicDetector.js';
+import SeismicIndicator from './components/SeismicIndicator.jsx';
+import LocationPermissionModal from './components/LocationPermissionModal.jsx';
 
 export default function App() {
   const meshStatus = useMeshStatus();
@@ -28,11 +31,23 @@ export default function App() {
     muteSiren,
     dismissAlert,
     resolveSos,
-    userLocation
+    userLocation,
+    requestLocation,
+    refreshSos
   } = incomingSosData;
 
   // AI Chat state (local Ollama phi3)
   const aiChatData = useAiChat();
+
+  // Multi-modal Seismic / Tremor & Shake Detector
+  const seismicDetector = useSeismicDetector({
+    userLocation,
+    onTriggered: () => {
+      if (refreshSos) {
+        refreshSos();
+      }
+    }
+  });
 
   const [isSosOpen, setIsSosOpen] = useState(false);
   const [isBleModalOpen, setIsBleModalOpen] = useState(false);
@@ -71,6 +86,24 @@ export default function App() {
 
   return (
     <div className="w-full min-h-screen flex flex-col">
+      {/* ── Persistent Floating Emergency Siren Banner (Tap to stop sound) ── */}
+      {isSirenSounding && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-red-600 via-rose-600 to-red-600 text-white px-4 py-2.5 shadow-2xl flex items-center justify-between animate-pulse">
+          <div className="flex items-center gap-2 text-xs font-black">
+            <span className="text-lg animate-bounce">🔊</span>
+            <span>आपातकालीन सायरन बज रहा है (EMERGENCY ALARM ACTIVE)</span>
+          </div>
+          <button
+            onClick={muteSiren}
+            className="px-4 py-1.5 rounded-xl bg-white text-red-600 hover:bg-red-50 font-black text-xs transition-all shadow-md cursor-pointer active:scale-95 flex items-center gap-1.5"
+            title="Silence the alarm immediately"
+          >
+            <span>🔇</span>
+            <span>सायरन बंद करें (STOP ALARM)</span>
+          </button>
+        </div>
+      )}
+
       {/* Real-time Peer Toast Notification */}
       {peerToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-scale-up">
@@ -113,6 +146,13 @@ export default function App() {
         onRefresh={refreshStatus}
       />
 
+      {/* ── Automatic GPS Location Request on Startup ── */}
+      <LocationPermissionModal
+        isGpsAcquired={userLocation?.isGpsAcquired}
+        userLocation={userLocation}
+        onRequestGps={requestLocation}
+      />
+
       {/* ── Main View: Landing Page or Live Mesh App ── */}
       {viewMode === 'landing' ? (
         <EchoMeshLanding
@@ -148,6 +188,7 @@ export default function App() {
             meshStatus={meshStatus}
             incomingSosData={incomingSosData}
             aiChatData={aiChatData}
+            seismicDetector={seismicDetector}
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             onOpenSosModal={() => setIsSosOpen(true)}
@@ -156,6 +197,16 @@ export default function App() {
           />
         </div>
       )}
+
+      {/* Real-time Seismic & Tremor HUD / Shake Trigger */}
+      <SeismicIndicator
+        isArmed={seismicDetector.isArmed}
+        setIsArmed={seismicDetector.setIsArmed}
+        currentGForce={seismicDetector.currentGForce}
+        isTriggering={seismicDetector.isTriggering}
+        lastTriggeredAt={seismicDetector.lastTriggeredAt}
+        triggerSeismicAlert={seismicDetector.triggerSeismicAlert}
+      />
     </div>
   );
 }

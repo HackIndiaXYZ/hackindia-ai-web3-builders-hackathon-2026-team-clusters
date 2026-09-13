@@ -43,6 +43,7 @@ export default function BluetoothScanModal({
   // Web Bluetooth States
   const isBleSupported = isWebBluetoothSupported();
   const [isScanning, setIsScanning] = useState(false);
+  const [showBleTurnOnPrompt, setShowBleTurnOnPrompt] = useState(false);
   const [pairedDevices, setPairedDevices] = useState(() => getStoredPairedDevices());
   const [reconnectingId, setReconnectingId] = useState(null);
 
@@ -115,8 +116,13 @@ export default function BluetoothScanModal({
 
   if (!isOpen) return null;
 
-  // ── REAL WEB BLUETOOTH SCAN & PAIRING HANDLER ──
-  const handleStartBleScan = async () => {
+  // ── TRIGGER BLUETOOTH ON REQUEST PROMPT ──
+  const handleStartBleScan = () => {
+    setShowBleTurnOnPrompt(true);
+  };
+
+  // ── REAL WEB BLUETOOTH SCAN & PAIRING EXECUTION ──
+  const executeBleScan = async () => {
     if (!isBleSupported) {
       // Fallback for mobile HTTP context / iOS browsers: Auto-connect via Mesh Relay!
       showToast('⚡ Mobile HTTP mode: Connecting via Hotspot Wi-Fi Mesh Relay...', 'info', 3000);
@@ -153,7 +159,7 @@ export default function BluetoothScanModal({
       } else if (err.message === 'NOT_ECHOMESH_DEVICE') {
         showToast("⚠️ This device isn't running EchoMesh", 'error', 5000);
       } else {
-        showToast(`Connection failed — device out of range or rejected pairing`, 'error', 5000);
+        showToast(`Bluetooth adapter not ready or device rejected pairing`, 'error', 5000);
       }
     } finally {
       setIsScanning(false);
@@ -444,6 +450,77 @@ export default function BluetoothScanModal({
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── BLUETOOTH TURN-ON PERMISSION & REQUEST DIALOG ── */}
+      {showBleTurnOnPrompt && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-scale-up">
+          <div className="w-full max-w-sm bg-white border-2 border-blue-500 rounded-3xl p-6 text-center space-y-4 shadow-2xl relative overflow-hidden text-slate-800">
+            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-600 via-cyan-400 to-blue-600 animate-pulse" />
+            
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-3xl shadow-xs animate-bounce">
+              📡
+            </div>
+
+            <div>
+              <span className="text-[11px] uppercase tracking-widest text-[#0D6EFD] font-black block mb-1">
+                Bluetooth Connection Request
+              </span>
+              <h4 className="text-lg font-black text-slate-900 leading-tight">
+                कृपया Bluetooth चालू (ON) करें
+              </h4>
+              <p className="text-xs text-slate-600 mt-1 font-medium leading-relaxed">
+                EchoMesh uses offline Bluetooth Low Energy (BLE) to link nearby survivor nodes without cellular network or internet.
+              </p>
+            </div>
+
+            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-2xl text-[11px] text-blue-950 text-left font-medium space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-blue-600 font-bold">1.</span>
+                <span>अपने फोन/लैपटॉप की सेटिंग्स से <strong>Bluetooth ON</strong> रखें।</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-blue-600 font-bold">2.</span>
+                <span>नीचे दिए गए बटन पर टैप करके नजदीकी EchoMesh नोड चुनें।</span>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBleTurnOnPrompt(false);
+                  executeBleScan();
+                }}
+                className="w-full py-3 rounded-2xl bg-[#0D6EFD] hover:bg-blue-700 active:scale-95 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>⚡</span>
+                <span>ब्लूटूथ चालू है / SCAN NEARBY DEVICES</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBleTurnOnPrompt(false);
+                  handleAddDemoBleNode();
+                }}
+                className="w-full py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#198754] border border-emerald-300 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                title="Use demo relay for instant hackathon showcase"
+              >
+                <span>📲</span>
+                <span>त्वरित डेमो लिंक (+ Quick Link Demo BLE)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowBleTurnOnPrompt(false)}
+                className="w-full py-2 text-slate-400 hover:text-slate-700 text-xs font-semibold cursor-pointer"
+              >
+                रद्द करें / Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}

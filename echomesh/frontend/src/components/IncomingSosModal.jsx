@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { emergencyAudio } from '../utils/emergencyAudio.js';
+import { voiceAssistant } from '../utils/voiceAssistant.js';
+import { playAudioClip, stopAudioClip, isAmrFormat } from '../utils/universalAudio.js';
 
 // 100% Real Haversine GPS Distance Calculation
 function calculateGeoDistance(lat1, lon1, lat2, lon2) {
@@ -134,22 +136,96 @@ export default function IncomingSosModal({
   onOpenMap
 }) {
   const [selectedSosIndex, setSelectedSosIndex] = useState(0);
+  const [isSpeakingVoice, setIsSpeakingVoice] = useState(false);
+  const [isPlayingVictimAudio, setIsPlayingVictimAudio] = useState(false);
 
   const currentSos = (activeSosList && activeSosList.length > 0)
     ? (activeSosList[selectedSosIndex] || activeSosList[0] || sos)
     : sos;
 
-  if (!isOpen || !currentSos) return null;
-
-  const totalSosCount = activeSosList.length > 0 ? activeSosList.length : 1;
-
   // Real GPS calculations
   const distanceInfo = calculateGeoDistance(
     userLocation?.latitude,
     userLocation?.longitude,
-    currentSos.latitude,
-    currentSos.longitude
+    currentSos?.latitude,
+    currentSos?.longitude
   );
+
+  const isSeismic = currentSos?.emergencyType === 'seismic' ||
+    (currentSos?.message && /seismic|earthquake|tremor|shockwave/i.test(currentSos.message));
+
+  const playVictimAudio = useCallback(() => {
+    if (!currentSos?.audioData) return;
+    stopAudioClip();
+    setIsPlayingVictimAudio(true);
+    playAudioClip(currentSos.audioData, {
+      onStart: () => setIsPlayingVictimAudio(true),
+      onEnd: () => setIsPlayingVictimAudio(false),
+      onError: (err) => {
+        console.warn('Victim audio playback error:', err);
+        setIsPlayingVictimAudio(false);
+      }
+    });
+  }, [currentSos?.audioData]);
+
+  const stopVictimAudio = useCallback(() => {
+    stopAudioClip();
+    setIsPlayingVictimAudio(false);
+  }, []);
+
+  // Auto-speak "सावधान!" distress warning aloud when alert arrives, then play victim audio!
+  useEffect(() => {
+    if (isOpen && currentSos) {
+      stopAudioClip();
+      setIsPlayingVictimAudio(false);
+
+      const alertSpeech = isSeismic
+        ? 'सावधान! सावधान! उच्च तीव्रता का असामान्य भूकंप या झटका दर्ज किया गया है। तुरंत सुरक्षित स्थान पर जाएं।'
+        : `सावधान! सावधान! आपातकालीन संदेश प्राप्त हुआ है। ${currentSos.deviceName || 'आपदा पीड़ित'} से संदेश: ${currentSos.message || 'मदद की आवश्यकता है।'}`;
+
+      const timer = setTimeout(() => {
+        voiceAssistant.speak(alertSpeech, {
+          lang: 'hi-IN',
+          rate: 0.95,
+          onStart: () => setIsSpeakingVoice(true),
+          onEnd: () => {
+            setIsSpeakingVoice(false);
+            // If the SOS alert includes an attached voice recording, automatically play it!
+            if (currentSos?.audioData) {
+              setTimeout(() => {
+                playVictimAudio();
+              }, 400);
+            }
+          }
+        });
+      }, 600);
+
+      return () => {
+        clearTimeout(timer);
+        voiceAssistant.stopSpeaking();
+        stopAudioClip();
+        setIsSpeakingVoice(false);
+        setIsPlayingVictimAudio(false);
+      };
+    } else {
+      stopAudioClip();
+      voiceAssistant.stopSpeaking();
+      setIsSpeakingVoice(false);
+      setIsPlayingVictimAudio(false);
+    }
+  }, [isOpen, currentSos?.id, currentSos?.audioData, isSeismic, playVictimAudio]);
+
+  const handleDismissWithVoice = () => {
+    stopAudioClip();
+    voiceAssistant.stopSpeaking();
+    setIsSpeakingVoice(false);
+    setIsPlayingVictimAudio(false);
+    onDismiss(currentSos?.id, currentSos?.timestamp);
+  };
+
+  if (!isOpen || !currentSos) return null;
+
+  const totalSosCount = activeSosList.length > 0 ? activeSosList.length : 1;
 
   // Position coordinates
   const userLat = userLocation?.latitude || 26.9124;
@@ -164,27 +240,26 @@ export default function IncomingSosModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
       
-      <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-7 border-2 border-red-500 relative shadow-2xl overflow-hidden animate-scale-up">
+      <div className={`bg-white rounded-3xl max-w-lg w-full p-5 sm:p-7 border-2 ${isSeismic ? 'border-amber-500 shadow-amber-500/20' : 'border-red-500'} relative shadow-2xl overflow-hidden animate-scale-up`}>
         
         {/* Animated Emergency Top Bar */}
-        <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-red-600 via-amber-500 to-red-600 animate-pulse" />
+        <div className={`absolute top-0 left-0 right-0 h-2 bg-gradient-to-r ${isSeismic ? 'from-amber-500 via-red-600 to-amber-500' : 'from-red-600 via-amber-500 to-red-600'} animate-pulse`} />
 
-        {/* Close Button */}
+        {/* Close & Silence Button */}
         <button
-          onClick={() => onDismiss(currentSos.id)}
-          className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-all cursor-pointer"
-          title="Dismiss Alert"
+          onClick={handleDismissWithVoice}
+          className="absolute top-3.5 right-3.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 hover:border-red-300 font-bold text-xs transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-95"
+          title="Dismiss Alert, Stop Siren & Voice"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <span>✕</span>
+          <span className="hidden sm:inline">सायरन रोकें / Close</span>
         </button>
 
         {/* Header Badge & Multi-Victim Switcher */}
-        <div className="text-center mb-4 pt-1">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-red-50 border border-red-300 text-[#DC3545] text-xs font-bold animate-pulse mb-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#DC3545] animate-ping inline-block" />
-            <span>🚨 INCOMING SOS ({selectedSosIndex + 1} of {totalSosCount})</span>
+        <div className="text-center mb-3 pt-1">
+          <div className={`inline-flex items-center gap-2 px-3.5 py-1 rounded-full ${isSeismic ? 'bg-amber-50 border border-amber-300 text-amber-800' : 'bg-red-50 border border-red-300 text-[#DC3545]'} text-xs font-bold animate-pulse mb-2`}>
+            <span className={`w-2.5 h-2.5 rounded-full ${isSeismic ? 'bg-amber-500' : 'bg-[#DC3545]'} animate-ping inline-block`} />
+            <span>{isSeismic ? '⚡ SEISMIC / UNUSUAL ACTIVITY ALERT' : `🚨 INCOMING SOS (${selectedSosIndex + 1} of ${totalSosCount})`}</span>
           </div>
 
           {totalSosCount > 1 && (
@@ -208,11 +283,100 @@ export default function IncomingSosModal({
           )}
 
           <h2 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center justify-center gap-2">
-            <span>Disaster Victim: {currentSos.deviceName}</span>
+            <span>{isSeismic ? '⚡ Unusual Tremors Detected' : `Disaster Victim: ${currentSos.deviceName}`}</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Emergency distress signal detected in local mesh network.
+            {isSeismic ? 'Shockwave / physical tremor detected by connected mesh node.' : 'Emergency distress signal detected in local mesh network.'}
           </p>
+
+          {/* Prominent Emergency Message / Evacuation Box */}
+          <div className={`mt-2.5 p-3.5 rounded-2xl ${isSeismic ? 'bg-amber-50 border border-amber-300 text-amber-900' : 'bg-red-50 border border-red-200 text-red-900'} text-xs font-medium text-left shadow-xs`}>
+            <div className="font-bold flex items-center justify-between gap-1.5 mb-1.5 pb-1 border-b border-red-200/60">
+              <span className="flex items-center gap-1">
+                <span>{isSeismic ? '🚨 EVACUATION NOTICE:' : '📢 DISTRESS MESSAGE:'}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSpeakingVoice) {
+                    voiceAssistant.stopSpeaking();
+                    setIsSpeakingVoice(false);
+                  } else {
+                    const alertSpeech = isSeismic
+                      ? 'सावधान! उच्च तीव्रता का असामान्य भूकंप या झटका दर्ज किया गया है। तुरंत सुरक्षित स्थान पर जाएं।'
+                      : `सावधान! ${currentSos.deviceName || 'विक्टिम नोड'} से संदेश: ${currentSos.message || 'मदद की आवश्यकता है।'}`;
+                    voiceAssistant.speak(alertSpeech, {
+                      lang: 'hi-IN',
+                      rate: 0.95,
+                      onStart: () => setIsSpeakingVoice(true),
+                      onEnd: () => setIsSpeakingVoice(false)
+                    });
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 ${
+                  isSpeakingVoice
+                    ? 'bg-rose-600 text-white animate-pulse'
+                    : 'bg-white border border-slate-300 text-slate-700 hover:text-red-600 hover:bg-slate-50'
+                }`}
+                title="Hear emergency voice message aloud"
+              >
+                <span>{isSpeakingVoice ? '⏹️' : '🔊'}</span>
+                <span>{isSpeakingVoice ? 'आवाज़ रोकें (Stop Voice)' : 'वॉइस सुनें (Play Voice)'}</span>
+              </button>
+            </div>
+            <p className="leading-relaxed font-semibold text-xs sm:text-sm">
+              "{currentSos.message || (isSeismic ? 'Tremors detected in area. Move immediately to open ground!' : 'Emergency! Need urgent assistance.')}"
+            </p>
+            {isSeismic && (
+              <div className="mt-1.5 pt-1.5 border-t border-amber-200 text-[11px] font-bold text-amber-800 flex items-center gap-1">
+                <span>🛡️</span>
+                <span>Guideline: Drop, Cover & Hold On. Keep clear of walls, glass, & wires.</span>
+              </div>
+            )}
+
+            {currentSos.audioData && (
+              <div className="mt-3 p-3.5 rounded-2xl bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-400 text-left shadow-md space-y-2.5">
+                <div className="flex items-center justify-between text-xs font-black text-red-900">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping" />
+                    <span>🎙️ पीड़ित की वास्तविक रिकॉर्ड की गई आवाज़ (Voice Clip):</span>
+                  </span>
+                  <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-black tracking-wider">
+                    {isPlayingVictimAudio ? 'PLAYING...' : 'VOICE ATTACHED'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isPlayingVictimAudio) {
+                        stopVictimAudio();
+                      } else {
+                        voiceAssistant.stopSpeaking();
+                        setIsSpeakingVoice(false);
+                        playVictimAudio();
+                      }
+                    }}
+                    className={`w-full py-2.5 px-4 rounded-xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-95 ${
+                      isPlayingVictimAudio
+                        ? 'bg-rose-600 hover:bg-rose-700 text-white ring-4 ring-rose-400/40 animate-pulse'
+                        : 'bg-[#DC3545] hover:bg-red-700 text-white'
+                    }`}
+                  >
+                    <span className="text-base">{isPlayingVictimAudio ? '⏹️' : '🔊'}</span>
+                    <span>
+                      {isPlayingVictimAudio ? 'आवाज़ रोकें (Stop Voice Clip)' : '🔊 पीड़ित की आवाज़ सुनें (Play Victim Voice)'}
+                    </span>
+                  </button>
+                </div>
+
+                {!isAmrFormat(currentSos.audioData) && (
+                  <audio controls src={currentSos.audioData} className="w-full h-8 rounded" />
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Siren Sound Active Banner with Mute Button */}
@@ -245,15 +409,25 @@ export default function IncomingSosModal({
         )}
 
         {/* ═══ REAL OPENSTREETMAP LEAFLET TACTICAL RADAR CANVAS ═══ */}
-        <div className="relative h-56 rounded-2xl border border-slate-200 overflow-hidden shadow-inner mb-4 bg-slate-100">
+        <div className="relative h-56 rounded-2xl border border-slate-200 overflow-hidden shadow-inner mb-4 bg-[#07111e]">
           <MapContainer
             center={mapCenter}
             zoom={15}
-            style={{ height: '100%', width: '100%', background: '#F8F9FA' }}
+            style={{
+              height: '100%',
+              width: '100%',
+              backgroundColor: '#07111e',
+              backgroundImage: `
+                radial-gradient(circle at center, rgba(239, 68, 68, 0.18) 0%, rgba(7, 17, 30, 0.95) 75%),
+                linear-gradient(rgba(14, 165, 233, 0.15) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(14, 165, 233, 0.15) 1px, transparent 1px)
+              `,
+              backgroundSize: '100% 100%, 40px 40px, 40px 40px'
+            }}
             zoomControl={false}
             attributionControl={false}
           >
-            {/* Offline-first: tiles try OSM, fall back to light bg if no internet */}
+            {/* Offline-first: tiles try OSM, fall back to high-tech tactical grid if no internet */}
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               maxZoom={19}
@@ -262,17 +436,29 @@ export default function IncomingSosModal({
 
             <FitMapBounds userPos={userPos} victimPos={victimPos} />
 
+            {/* Concentric Tactical Sonar Range Rings around Receiver */}
+            <Circle
+              center={userPos}
+              radius={150}
+              pathOptions={{ color: '#06b6d4', fillColor: '#06b6d4', fillOpacity: 0.05, weight: 1, dashArray: '4, 4' }}
+            />
+            <Circle
+              center={userPos}
+              radius={400}
+              pathOptions={{ color: '#3b82f6', fillColor: 'transparent', weight: 1, dashArray: '6, 6' }}
+            />
+
             {/* Connecting Polyline between You and Victim */}
             <Polyline
               positions={[userPos, victimPos]}
               pathOptions={{ color: '#0D6EFD', weight: 3, dashArray: '6, 6' }}
             />
 
-            {/* Circle around Victim */}
+            {/* Pulsing Circle around Victim */}
             <Circle
               center={victimPos}
-              radius={100}
-              pathOptions={{ color: '#DC3545', fillColor: '#DC3545', fillOpacity: 0.18, weight: 2 }}
+              radius={80}
+              pathOptions={{ color: '#DC3545', fillColor: '#DC3545', fillOpacity: 0.22, weight: 2 }}
             />
 
             {/* Receiver / You Location Marker */}
@@ -333,27 +519,39 @@ export default function IncomingSosModal({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2.5">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            {/* Primary Stop Siren / Dismiss Button */}
+            <button
+              onClick={() => onDismiss(currentSos.id)}
+              className="flex-1 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white font-black text-xs shadow-lg transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-2 border border-red-400/30"
+            >
+              <span className="text-base">🔇</span>
+              <span>सायरन बंद करें / STOP ALARM</span>
+            </button>
+
+            {onOpenMap && (
+              <button
+                onClick={() => {
+                  onDismiss(currentSos.id);
+                  onOpenMap();
+                }}
+                className="px-4 py-3.5 rounded-2xl bg-blue-50 hover:bg-blue-100 text-[#0D6EFD] font-bold text-xs border border-blue-200 transition-all cursor-pointer flex items-center gap-1.5"
+                title="View Tactical Radar Map"
+              >
+                <span>🗺️</span>
+                <span>MAP</span>
+              </button>
+            )}
+          </div>
+
           <button
             onClick={() => onResolve(currentSos.id)}
-            className="flex-1 py-3.5 rounded-2xl bg-[#198754] hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-2"
+            className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-bold text-xs border border-slate-200 hover:border-emerald-300 transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-2"
           >
             <span>✅</span>
-            <span>MARK AS RESCUED / रेस्क्यू हो गए</span>
+            <span>स्थिति सुरक्षित है (Mark as Rescued / Resolved)</span>
           </button>
-
-          {onOpenMap && (
-            <button
-              onClick={() => {
-                onDismiss(currentSos.id);
-                onOpenMap();
-              }}
-              className="px-4 py-3.5 rounded-2xl bg-blue-50 hover:bg-blue-100 text-[#0D6EFD] font-bold text-xs border border-blue-200 transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <span>🗺️</span>
-              <span>MAP</span>
-            </button>
-          )}
         </div>
 
       </div>

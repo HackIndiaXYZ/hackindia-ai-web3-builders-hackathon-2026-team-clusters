@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ROUTER_URL } from '../config.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // EchoMesh — Comprehensive Bilingual Copy Object (English & Hindi)
@@ -1890,7 +1891,29 @@ export default function EchoMeshLanding({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setSosSent(true)}
+                      onClick={async () => {
+                        setSosSent(true);
+                        try {
+                          await fetch(`${ROUTER_URL}/sos`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              deviceName: 'Mobile Survivor (Landing Demo)',
+                              sender: 'Mobile Survivor (Landing Demo)',
+                              emergencyType: sosCategory || 'critical',
+                              latitude: userLocation?.latitude || 28.6280,
+                              longitude: userLocation?.longitude || 77.2140,
+                              message: sosCategory === 'flood'
+                                ? '🌊 भीषण बाढ़! छत पर फंसे हैं, तुरंत नाव और बचाव दल भेजें।'
+                                : (sosCategory === 'medical'
+                                  ? '🩺 गंभीर चोट लगी है! तुरंत प्राथमिक चिकित्सा और डॉक्टर की आवश्यकता है।'
+                                  : '🍼 राशन और पीने का स्वच्छ पानी समाप्त हो गया है। तत्काल सहायता चाहिए।')
+                            })
+                          });
+                        } catch (err) {
+                          console.warn('Landing SOS broadcast error:', err);
+                        }
+                      }}
                       className="w-full py-3.5 rounded-xl bg-[#E13A2E] hover:bg-[#C92A1E] text-white font-black text-xs uppercase tracking-wider shadow-lg hover:shadow-[#E13A2E]/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <span>🚨</span>

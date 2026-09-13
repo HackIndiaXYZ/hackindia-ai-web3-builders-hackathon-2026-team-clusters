@@ -1,17 +1,86 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ROUTER_URL } from '../config.js';
 import { emergencyAudio } from '../utils/emergencyAudio.js';
 import { voiceAssistant } from '../utils/voiceAssistant.js';
+import { playAudioClip, stopAudioClip, convertAmrToWavDataUrl } from '../utils/universalAudio.js';
+import MicPermissionModal from './MicPermissionModal.jsx';
 
 export default function SosModal({ isOpen, onClose }) {
-  const [userName, setUserName] = useState('');
-  const [nameSaved, setNameSaved] = useState(false);
+  const [userName, setUserName] = useState(() => {
+    try {
+      return localStorage.getItem('echomesh_sos_name') || 'आपदा पीड़ित (Survivor)';
+    } catch (e) {
+      return 'आपदा पीड़ित (Survivor)';
+    }
+  });
+  const [nameSaved, setNameSaved] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState({ type: 'idle', message: 'Tap the red button or speak your emergency message to broadcast across the mesh' });
   const [notifiedCount, setNotifiedCount] = useState(null);
   const [isSirenActive, setIsSirenActive] = useState(false);
   const [customDistressMsg, setCustomDistressMsg] = useState('');
   const [isVoiceListening, setIsVoiceListening] = useState(false);
+  const [isMicGuideOpen, setIsMicGuideOpen] = useState(false);
+
+  // Native HTML5 mobile microphone capture (works 100% on HTTP without SSL or flags!)
+  const nativeAudioInputRef = useRef(null);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState(null);
+  const [recordedAudioBase64, setRecordedAudioBase64] = useState(null);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+
+  const handleAudioCaptured = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      setStatus({
+        type: 'locating',
+        message: '⏳ आवाज़ सुरक्षित की जा रही है (Processing voice audio)...'
+      });
+      try {
+        // Convert to standard WAV format so all receiving laptops & browsers can play it
+        const wavDataUrl = await convertAmrToWavDataUrl(file);
+        setRecordedAudioBase64(wavDataUrl);
+        setRecordedAudioUrl(wavDataUrl);
+
+        if (!customDistressMsg) {
+          setCustomDistressMsg('🚨 [वॉइस ऑडियो संदेश संलग्न] आपातकालीन बचाव सहायता चाहिए!');
+        }
+        setStatus({
+          type: 'idle',
+          message: '✅ आपकी आवाज़ रिकॉर्ड हो गई! नीचे दिए लाल बटन से तुरंत प्रसारित करें।'
+        });
+      } catch (convErr) {
+        console.warn('WAV conversion fallback:', convErr);
+        const reader = new FileReader();
+        reader.onload = () => {
+          setRecordedAudioBase64(reader.result);
+          setRecordedAudioUrl(URL.createObjectURL(file));
+          if (!customDistressMsg) {
+            setCustomDistressMsg('🚨 [वॉइस ऑडियो संदेश संलग्न] आपातकालीन बचाव सहायता चाहिए!');
+          }
+          setStatus({
+            type: 'idle',
+            message: '✅ आवाज़ रिकॉर्ड हो गई! नीचे दिए लाल बटन से तुरंत प्रसारित करें।'
+          });
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
+  const togglePlayPreview = () => {
+    if (isPlayingPreview) {
+      stopAudioClip();
+      setIsPlayingPreview(false);
+    } else {
+      if (!recordedAudioBase64 && !recordedAudioUrl) return;
+      setIsPlayingPreview(true);
+      playAudioClip(recordedAudioBase64 || recordedAudioUrl, {
+        onStart: () => setIsPlayingPreview(true),
+        onEnd: () => setIsPlayingPreview(false),
+        onError: () => setIsPlayingPreview(false)
+      });
+    }
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem('echomesh_sos_name');
@@ -53,8 +122,10 @@ export default function SosModal({ isOpen, onClose }) {
     if (!isOpen) {
       emergencyAudio.stopSiren();
       voiceAssistant.stopListening();
+      stopAudioClip();
       setIsSirenActive(false);
       setIsVoiceListening(false);
+      setIsPlayingPreview(false);
     }
   }, [isOpen]);
 
@@ -76,8 +147,20 @@ export default function SosModal({ isOpen, onClose }) {
     }
   };
 
-  // Voice Typing for Emergency Message (Hindi & English STT)
+  // Voice Recording & Typing for Emergency Message
   const toggleVoiceTyping = async () => {
+    const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+
+    // On mobile phone over HTTP: directly open phone's native microphone recorder!
+    // No SSL warning, no permissions blocked, works 100% on any browser!
+    if (!isLocalhost && !isHttps) {
+      if (nativeAudioInputRef.current) {
+        nativeAudioInputRef.current.click();
+      }
+      return;
+    }
+
     if (isVoiceListening) {
       voiceAssistant.stopListening();
       setIsVoiceListening(false);
@@ -87,7 +170,7 @@ export default function SosModal({ isOpen, onClose }) {
     setIsVoiceListening(true);
     setStatus({
       type: 'locating',
-      message: '🎙️ Listening... Bolna shuru karein (e.g. "छत पर 4 लोग फंसे हैं, तुरंत मदद भेजो")...'
+      message: '🎙️ सुन रहे हैं... बोलना शुरू करें (उदा. "छत पर 4 लोग फंसे हैं, तुरंत नाव भेजो")...'
     });
 
     await voiceAssistant.startListening({
@@ -97,13 +180,16 @@ export default function SosModal({ isOpen, onClose }) {
           setCustomDistressMsg(transcript);
           setStatus({
             type: 'idle',
-            message: '✅ Voice message captured! Press the RED SOS BUTTON to broadcast.'
+            message: '✅ वॉइस संदेश रिकॉर्ड हो गया! लाल SOS बटन दबाकर या नीचे दिए बटन से प्रसारित करें।'
           });
         }
       },
-      onError: (errMsg) => {
+      onError: () => {
         setIsVoiceListening(false);
-        setStatus({ type: 'error', message: `⚠️ ${errMsg || 'Voice recognition unavailable.'}` });
+        // Seamless fallback to phone's native sound recorder:
+        if (nativeAudioInputRef.current) {
+          nativeAudioInputRef.current.click();
+        }
       },
       onEnd: () => {
         setIsVoiceListening(false);
@@ -157,7 +243,8 @@ export default function SosModal({ isOpen, onClose }) {
           deviceName: name,
           latitude,
           longitude,
-          message: finalMessage
+          message: finalMessage,
+          audioData: recordedAudioBase64 || null
         })
       });
 
@@ -262,53 +349,163 @@ export default function SosModal({ isOpen, onClose }) {
               </button>
             </div>
 
-            {/* Voice-Typing & Custom Distress Message Box */}
-            <div className="w-full space-y-1.5">
+            {/* ── Prominent Dedicated Voice SOS Card ── */}
+            <div className="w-full p-3.5 sm:p-4 rounded-2xl bg-amber-50/80 border-2 border-amber-300 shadow-sm space-y-2.5 text-left">
               <div className="flex items-center justify-between">
-                <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                  <span>✍️ Emergency Message (Bol Kar Ya Type Karein):</span>
-                </label>
-                <span className="text-[10px] text-[#0D6EFD] font-bold">Hindi / English Mic</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🎙️</span>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                      बोलकर SOS भेजें (Voice SOS)
+                    </h4>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      हिंदी या English में बोलें — तुरंत डिस्ट्रेस अलर्ट प्रसारित होगा
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMicGuideOpen(true)}
+                  className="text-[10px] text-amber-800 hover:text-amber-950 underline font-bold flex items-center gap-1 cursor-pointer bg-white/70 px-2 py-1 rounded-lg border border-amber-200 shadow-2xs"
+                  title="माइक अनुमति कैसे दें / अनब्लॉक करें"
+                >
+                  <span>🔓</span>
+                  <span>माइक चालू कैसे करें?</span>
+                </button>
               </div>
 
-              {/* Message Box with Integrated Big Mic Voice Typing */}
-              <div className={`relative flex items-center rounded-xl bg-slate-50 border transition-all ${
-                isVoiceListening ? 'border-red-400 ring-2 ring-red-400/30 shadow-md' : 'border-slate-300 focus-within:border-[#DC3545]'
+              {/* If on mobile HTTP, suggest 1-click switch to HTTPS */}
+              {typeof window !== 'undefined' && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+                <div className="p-2 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-950 flex items-center justify-between text-[11px] font-bold">
+                  <span className="flex items-center gap-1.5">
+                    <span>🔒</span>
+                    <span>फोन में माइक हेतु: HTTPS (4443) खोलें</span>
+                  </span>
+                  <a
+                    href={`https://${window.location.hostname}:4443`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] transition-colors shadow-2xs"
+                  >
+                    स्विच करें ↗
+                  </a>
+                </div>
+              )}
+
+              {/* Hidden Native Mobile Audio Capture Input */}
+              <input
+                type="file"
+                ref={nativeAudioInputRef}
+                accept="audio/*"
+                capture="microphone"
+                onChange={handleAudioCaptured}
+                className="hidden"
+              />
+
+              {/* Big Interactive Tap-to-Speak Button */}
+              <button
+                type="button"
+                onClick={toggleVoiceTyping}
+                className={`w-full py-3 px-4 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-md active:scale-95 ${
+                  isVoiceListening
+                    ? 'bg-[#DC3545] text-white animate-pulse shadow-red-500/50 ring-4 ring-red-400/40'
+                    : 'bg-white hover:bg-slate-50 text-slate-900 border-2 border-slate-300 hover:border-slate-400'
+                }`}
+              >
+                <span className="text-base">{isVoiceListening ? '🔴' : '🎙️'}</span>
+                <span className="text-xs sm:text-sm">
+                  {isVoiceListening ? 'सुन रहे हैं... बोलिए (रोकने के लिए दबाएं)' : '🎙️ माइक चालू करें / बोलकर रिकॉर्ड करें (Tap to Speak)'}
+                </span>
+              </button>
+
+              {/* Real Recorded Audio Preview Player */}
+              {recordedAudioUrl && (
+                <div className="p-3.5 rounded-2xl bg-emerald-50 border-2 border-emerald-400 space-y-2.5 animate-fade-in text-left shadow-xs">
+                  <div className="flex items-center justify-between text-xs text-emerald-950 font-black">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>आपकी रिकॉर्ड की गई आवाज़ (Voice Clip Ready)</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => nativeAudioInputRef.current?.click()}
+                      className="text-[11px] text-emerald-700 hover:text-emerald-950 font-black underline cursor-pointer"
+                    >
+                      🔄 दोबारा रिकॉर्ड करें
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={togglePlayPreview}
+                      className={`flex-1 py-2 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-95 ${
+                        isPlayingPreview
+                          ? 'bg-rose-600 text-white animate-pulse'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
+                    >
+                      <span>{isPlayingPreview ? '⏹️' : '▶️'}</span>
+                      <span>{isPlayingPreview ? 'आवाज़ रोकें (Stop)' : 'अपनी आवाज़ सुनें (Play Voice Preview)'}</span>
+                    </button>
+                  </div>
+                  <audio controls src={recordedAudioUrl} className="w-full h-8 rounded" />
+                </div>
+              )}
+
+              {/* Spoken Text Display / Input Box */}
+              <div className={`relative flex items-center rounded-xl bg-white border transition-all ${
+                isVoiceListening ? 'border-red-400 ring-2 ring-red-400/30' : 'border-slate-300 focus-within:border-[#DC3545]'
               }`}>
                 <input
                   type="text"
                   value={customDistressMsg}
                   onChange={(e) => setCustomDistressMsg(e.target.value)}
-                  placeholder={isVoiceListening ? "🎙️ Bol rahe hain... (Listening live)..." : "Bol kar ya type karke message likhein..."}
-                  className="w-full bg-transparent border-none px-3.5 py-2.5 text-xs text-slate-900 placeholder-slate-400 outline-none"
+                  placeholder={isVoiceListening ? "🎙️ सुन रहे हैं... (Listening live)..." : "बोला गया संदेश यहाँ दिखेगा, या टाइप करें..."}
+                  className="w-full bg-transparent border-none px-3.5 py-2.5 text-xs text-slate-900 placeholder-slate-400 outline-none font-medium"
                 />
-
-                {/* Voice Typing Mic Button */}
-                <button
-                  type="button"
-                  onClick={toggleVoiceTyping}
-                  className={`mr-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    isVoiceListening
-                      ? 'bg-[#DC3545] text-white animate-pulse shadow-md'
-                      : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
-                  }`}
-                  title="Click to speak your emergency message"
-                >
-                  <span>{isVoiceListening ? '🔴' : '🎙️'}</span>
-                  <span>{isVoiceListening ? 'Stop' : 'बोलें'}</span>
-                </button>
+                {customDistressMsg && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomDistressMsg('')}
+                    className="px-2.5 text-slate-400 hover:text-slate-700 text-xs font-bold cursor-pointer"
+                    title="हटाएं"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
 
-              {/* Quick 1-Tap Hindi Emergency Reasons */}
-              <div className="pt-1">
-                <span className="text-[10px] text-slate-500 block mb-1 font-semibold">⚡ Ya 1-Tap me select karein:</span>
+              {/* Instant Spoken Message Broadcast Button */}
+              {customDistressMsg.trim() && (
+                <button
+                  type="button"
+                  onClick={() => triggerSOS(customDistressMsg.trim())}
+                  disabled={isSending}
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-600 hover:from-red-700 hover:to-rose-700 text-white font-black text-xs uppercase tracking-wider shadow-md hover:shadow-red-500/30 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 animate-fade-in"
+                >
+                  <span>🚨</span>
+                  <span>यह वॉइस संदेश तुरंत भेजें (Send Voice Message)</span>
+                </button>
+              )}
+
+              {/* Quick 1-Tap Emergency Reason Chips */}
+              <div className="pt-0.5">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-slate-600 font-bold">
+                    ⚡ या 1-टैप में कारण चुनें (बिना बोले):
+                  </span>
+                  <span className="text-[9px] text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.5 rounded">
+                    100% Guaranteed
+                  </span>
+                </div>
                 <div className="flex flex-wrap gap-1">
                   {quickChips.map((chip, idx) => (
                     <button
                       key={idx}
                       type="button"
                       onClick={() => setCustomDistressMsg(chip)}
-                      className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 hover:text-[#DC3545] hover:border-red-300 hover:bg-red-50 transition-all cursor-pointer font-medium"
+                      className="text-[11px] px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-800 hover:text-[#DC3545] hover:border-red-400 hover:bg-red-50 transition-all cursor-pointer font-semibold shadow-2xs active:scale-95"
                     >
                       {chip}
                     </button>
@@ -388,6 +585,14 @@ export default function SosModal({ isOpen, onClose }) {
         )}
 
       </div>
+
+      {/* Mic Permission Unblock Guide & Direct Test Modal */}
+      <MicPermissionModal
+        isOpen={isMicGuideOpen}
+        onClose={() => setIsMicGuideOpen(false)}
+        onSelectPreset={(txt) => setCustomDistressMsg(txt)}
+        lang="hi"
+      />
     </div>
   );
 }

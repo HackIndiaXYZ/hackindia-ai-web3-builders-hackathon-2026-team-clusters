@@ -61,11 +61,11 @@ export function useIncomingSos() {
           latitude: fallbackLat,
           longitude: fallbackLng,
           accuracy: 15,
-          isGpsAcquired: true,
+          isGpsAcquired: false,
           x: 48,
           y: 58
         });
-        setLocationStatus('acquired');
+        setLocationStatus('prompting');
       },
       { enableHighAccuracy: true, timeout: 4000, maximumAge: 0 }
     );
@@ -130,9 +130,10 @@ export function useIncomingSos() {
       // Check if there is an active SOS that hasn't been dismissed
       const newestActive = active[0];
       const sosId = newestActive.id;
+      const alertKey = `${sosId}_${newestActive.timestamp || ''}`;
 
       // Detect if this is a newly arrived SOS or currently unhandled SOS
-      if (!dismissedIdsRef.current.has(sosId)) {
+      if (!dismissedIdsRef.current.has(sosId) && !dismissedIdsRef.current.has(alertKey)) {
         setIncomingSos(newestActive);
         setIsAlertModalOpen(true);
 
@@ -140,6 +141,13 @@ export function useIncomingSos() {
         if (!isSirenSoundingRef.current) {
           emergencyAudio.startSiren();
           setIsSirenSounding(true);
+
+          // Physical phone vibration (SOS Pattern: short-short-short, long-long-long, short-short-short)
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            try {
+              navigator.vibrate([250, 100, 250, 100, 250, 200, 500, 150, 500, 150, 500, 200, 250, 100, 250]);
+            } catch (ve) {}
+          }
         }
       }
 
@@ -152,23 +160,98 @@ export function useIncomingSos() {
   useEffect(() => {
     checkSosStatus();
     const interval = setInterval(checkSosStatus, 2000);
-    return () => clearInterval(interval);
+
+    // Instantaneous WebSocket mesh listener for zero-delay alerts
+    let ws = null;
+    let reconnectTimeout = null;
+    let isMounted = true;
+
+    function connectWs() {
+      try {
+        if (!isMounted) return;
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${proto}//${window.location.hostname}:${window.location.port || '4000'}`;
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          try { ws.send(JSON.stringify({ type: 'CLIENT_LISTEN' })); } catch (e) {}
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'SOS_BROADCAST' && data.entry) {
+              const entry = data.entry;
+              const sosId = entry.id;
+              const alertKey = `${sosId}_${entry.timestamp || ''}`;
+
+              if (!dismissedIdsRef.current.has(sosId) && !dismissedIdsRef.current.has(alertKey)) {
+                setIncomingSos(entry);
+                setIsAlertModalOpen(true);
+                if (!isSirenSoundingRef.current) {
+                  emergencyAudio.startSiren();
+                  setIsSirenSounding(true);
+                  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                    try { navigator.vibrate([250, 100, 250, 100, 250, 200, 500, 150, 500, 150, 500, 200, 250, 100, 250]); } catch (ve) {}
+                  }
+                }
+              }
+              checkSosStatus();
+            }
+          } catch (err) {}
+        };
+
+        ws.onclose = () => {
+          if (isMounted) reconnectTimeout = setTimeout(connectWs, 3000);
+        };
+        ws.onerror = () => {
+          try { ws.close(); } catch (e) {}
+        };
+      } catch (err) {}
+    }
+
+    connectWs();
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (ws) {
+        try { ws.close(); } catch (e) {}
+      }
+    };
   }, [checkSosStatus]);
 
   const muteSiren = useCallback(() => {
     emergencyAudio.stopSiren();
     setIsSirenSounding(false);
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(0); } catch (e) {}
+    }
   }, []);
 
-  const dismissAlert = useCallback((id) => {
+  const dismissAlert = useCallback((id, timestamp) => {
     if (id) {
       dismissedIdsRef.current.add(id);
+      if (timestamp) {
+        dismissedIdsRef.current.add(`${id}_${timestamp}`);
+      }
     }
+    emergencyAudio.stopSiren();
+    setIsSirenSounding(false);
     setIsAlertModalOpen(false);
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(0); } catch (e) {}
+    }
   }, []);
 
   const resolveSos = useCallback(async (id) => {
     try {
+      emergencyAudio.stopSiren();
+      setIsSirenSounding(false);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(0); } catch (e) {}
+      }
       await fetch(`${ROUTER_URL}/sos-resolve/${id}`, { method: 'POST' });
       dismissAlert(id);
       checkSosStatus();

@@ -588,6 +588,7 @@ async function sendSOS(deviceName, latitude, longitude) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         deviceName,
+        sender: deviceName,
         latitude,
         longitude,
         message: '🚨 Emergency! Need immediate rescue assistance!'
