@@ -141,18 +141,25 @@ export function useIncomingSos() {
         return;
       }
 
-      // Check if there is an active SOS that hasn't been dismissed
-      const newestActive = active[0];
-      const sosId = newestActive.id;
-      const alertKey = `${sosId}_${newestActive.timestamp || ''}`;
-
-      const isDismissed = dismissedIdsRef.current.has(sosId) || dismissedIdsRef.current.has(alertKey);
-      const isMuted = isMutedByUserRef.current || mutedSosIdsRef.current.has(sosId) || mutedSosIdsRef.current.has(alertKey);
+      // Find any active SOS that hasn't been dismissed by the user
+      const unhandledActive = active.find(s => 
+        !dismissedIdsRef.current.has(s.id) && 
+        !dismissedIdsRef.current.has(String(s.id)) && 
+        !dismissedIdsRef.current.has(Number(s.id)) &&
+        !dismissedIdsRef.current.has(`${s.id}_${s.timestamp || ''}`)
+      );
 
       // Detect if this is a newly arrived SOS or currently unhandled SOS
-      if (!isDismissed) {
-        setIncomingSos(newestActive);
+      if (unhandledActive) {
+        setIncomingSos(unhandledActive);
         setIsAlertModalOpen(true);
+
+        const sosId = unhandledActive.id;
+        const alertKey = `${sosId}_${unhandledActive.timestamp || ''}`;
+        const isMuted = isMutedByUserRef.current || 
+                        mutedSosIdsRef.current.has(sosId) || 
+                        mutedSosIdsRef.current.has(String(sosId)) || 
+                        mutedSosIdsRef.current.has(alertKey);
 
         // Sound the emergency alarm siren only if user hasn't explicitly muted!
         if (!isSirenSoundingRef.current && !isMuted) {
@@ -186,8 +193,8 @@ export function useIncomingSos() {
     function connectWs() {
       try {
         if (!isMounted) return;
-        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${proto}//${window.location.hostname}:${window.location.port || '4000'}`;
+        // Connect to router WebSocket using ROUTER_URL protocol & host
+        const wsUrl = ROUTER_URL.replace(/^http/, 'ws');
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
@@ -200,20 +207,30 @@ export function useIncomingSos() {
             if (data.type === 'SOS_BROADCAST' && data.entry) {
               const entry = data.entry;
               const sosId = entry.id;
+
+              // Clear dismissal for this ID because a live broadcast just arrived
+              dismissedIdsRef.current.delete(sosId);
+              dismissedIdsRef.current.delete(String(sosId));
+              dismissedIdsRef.current.delete(Number(sosId));
+              if (entry.timestamp) {
+                dismissedIdsRef.current.delete(`${sosId}_${entry.timestamp}`);
+              }
+
+              // Instantly update incoming SOS and open modal
+              setIncomingSos(entry);
+              setIsAlertModalOpen(true);
+
               const alertKey = `${sosId}_${entry.timestamp || ''}`;
+              const isMuted = isMutedByUserRef.current || 
+                              mutedSosIdsRef.current.has(sosId) || 
+                              mutedSosIdsRef.current.has(String(sosId)) || 
+                              mutedSosIdsRef.current.has(alertKey);
 
-              const isDismissed = dismissedIdsRef.current.has(sosId) || dismissedIdsRef.current.has(alertKey);
-              const isMuted = isMutedByUserRef.current || mutedSosIdsRef.current.has(sosId) || mutedSosIdsRef.current.has(alertKey);
-
-              if (!isDismissed) {
-                setIncomingSos(entry);
-                setIsAlertModalOpen(true);
-                if (!isSirenSoundingRef.current && !isMuted) {
-                  emergencyAudio.startSiren();
-                  setIsSirenSounding(true);
-                  if (typeof navigator !== 'undefined' && navigator.vibrate) {
-                    try { navigator.vibrate([250, 100, 250, 100, 250, 200, 500, 150, 500, 150, 500, 200, 250, 100, 250]); } catch (ve) {}
-                  }
+              if (!isSirenSoundingRef.current && !isMuted) {
+                emergencyAudio.startSiren();
+                setIsSirenSounding(true);
+                if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                  try { navigator.vibrate([250, 100, 250, 100, 250, 200, 500, 150, 500, 150, 500, 200, 250, 100, 250]); } catch (ve) {}
                 }
               }
               checkSosStatus();
@@ -248,8 +265,16 @@ export function useIncomingSos() {
     setIsSirenSounding(false);
     isSirenSoundingRef.current = false;
     isMutedByUserRef.current = true;
-    if (targetId) mutedSosIdsRef.current.add(targetId);
-    if (incomingSos?.id) mutedSosIdsRef.current.add(incomingSos.id);
+    if (targetId) {
+      mutedSosIdsRef.current.add(targetId);
+      mutedSosIdsRef.current.add(String(targetId));
+      mutedSosIdsRef.current.add(Number(targetId));
+    }
+    if (incomingSos?.id) {
+      mutedSosIdsRef.current.add(incomingSos.id);
+      mutedSosIdsRef.current.add(String(incomingSos.id));
+      mutedSosIdsRef.current.add(Number(incomingSos.id));
+    }
 
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       try { navigator.vibrate(0); } catch (e) {}
@@ -265,10 +290,26 @@ export function useIncomingSos() {
     setIsSirenSounding(true);
   }, []);
 
+  const openSosAlert = useCallback((sosItem) => {
+    if (!sosItem) return;
+    dismissedIdsRef.current.delete(sosItem.id);
+    dismissedIdsRef.current.delete(String(sosItem.id));
+    dismissedIdsRef.current.delete(Number(sosItem.id));
+    if (sosItem.timestamp) {
+      dismissedIdsRef.current.delete(`${sosItem.id}_${sosItem.timestamp}`);
+    }
+    setIncomingSos(sosItem);
+    setIsAlertModalOpen(true);
+  }, []);
+
   const dismissAlert = useCallback((id, timestamp) => {
     if (id) {
       dismissedIdsRef.current.add(id);
+      dismissedIdsRef.current.add(String(id));
+      dismissedIdsRef.current.add(Number(id));
       mutedSosIdsRef.current.add(id);
+      mutedSosIdsRef.current.add(String(id));
+      mutedSosIdsRef.current.add(Number(id));
       if (timestamp) {
         dismissedIdsRef.current.add(`${id}_${timestamp}`);
         mutedSosIdsRef.current.add(`${id}_${timestamp}`);
@@ -309,6 +350,7 @@ export function useIncomingSos() {
     isSirenSounding,
     muteSiren,
     unmuteSiren,
+    openSosAlert,
     dismissAlert,
     resolveSos,
     userLocation,

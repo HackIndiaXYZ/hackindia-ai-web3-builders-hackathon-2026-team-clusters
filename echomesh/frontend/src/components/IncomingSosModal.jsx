@@ -240,7 +240,7 @@ export default function IncomingSosModal({
   const mapCenter = [(userLat + victimLat) / 2, (userLng + victimLng) / 2];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto overscroll-contain animate-fade-in">
+    <div className="fixed inset-0 z-[9999] flex items-start sm:items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto overscroll-contain animate-fade-in">
       
       {/* Scrollable Container with max height and sticky header/footer */}
       <div className={`relative w-full max-w-lg my-auto rounded-3xl bg-white border-2 ${
@@ -439,6 +439,7 @@ export default function IncomingSosModal({
           {/* ═══ REAL OPENSTREETMAP LEAFLET TACTICAL RADAR CANVAS ═══ */}
           <div className="relative h-52 sm:h-56 rounded-2xl border border-slate-200 overflow-hidden shadow-inner bg-[#07111e]">
             <MapContainer
+              key={`sos-map-${currentSos?.id || 'base'}`}
               center={mapCenter}
               zoom={15}
               style={{

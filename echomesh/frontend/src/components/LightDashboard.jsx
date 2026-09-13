@@ -517,6 +517,34 @@ export default function LightDashboard({
   return (
     <div className="w-full flex flex-col bg-[#EDEDEA] min-h-screen text-[#0A0A0A] font-sans selection:bg-red-200">
 
+      {/* ── HIGH PRIORITY ACTIVE SOS TICKER BAR ── */}
+      {activeSosList.length > 0 && (
+        <div className="bg-red-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm font-bold shadow-md z-50 sticky top-0">
+          <div className="flex items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap">
+            <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping flex-shrink-0" />
+            <span className="font-black tracking-wider uppercase bg-white/20 px-2 py-0.5 rounded-md text-[10px]">
+              {lang === 'hi' ? 'सक्रिय आपातकाल' : 'ACTIVE SOS'}
+            </span>
+            <span className="truncate">
+              🚨 {activeSosList[0].deviceName || 'Survivor'}: {activeSosList[0].message || 'Immediate assistance requested!'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (incomingSosData?.openSosAlert) {
+                incomingSosData.openSosAlert(activeSosList[0]);
+              } else if (incomingSosData?.setIsAlertModalOpen) {
+                incomingSosData.setIsAlertModalOpen(true);
+              }
+            }}
+            className="flex-shrink-0 bg-white text-red-700 hover:bg-red-50 px-3.5 py-1 rounded-xl text-xs font-black shadow-sm cursor-pointer transition-all uppercase tracking-wider animate-bounce"
+          >
+            {lang === 'hi' ? 'अलर्ट व रडार खोलें →' : 'Open Alert & Radar →'}
+          </button>
+        </div>
+      )}
+
       {/* ════════════════════════════════════════════════════════════════════════
           1. STICKY TOP NAVBAR (Website Layout)
           ════════════════════════════════════════════════════════════════════════ */}
@@ -997,12 +1025,29 @@ export default function LightDashboard({
             </button>
 
             {activeSosList.length > 0 && (
-              <button
-                onClick={() => resolveSos && resolveSos(activeSosList[0].id)}
-                className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-md"
-              >
-                ✓ Mark as Rescued & Safe
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (incomingSosData?.openSosAlert) {
+                      incomingSosData.openSosAlert(activeSosList[0]);
+                    } else if (incomingSosData?.setIsAlertModalOpen) {
+                      incomingSosData.setIsAlertModalOpen(true);
+                    }
+                  }}
+                  className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-xs cursor-pointer shadow-lg shadow-red-500/25 flex items-center justify-center gap-2"
+                >
+                  <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                  <span>🚨 {lang === 'hi' ? 'आपातकालीन अलर्ट व रडार देखें' : 'View SOS Alert & Radar'}</span>
+                </button>
+
+                <button
+                  onClick={() => resolveSos && resolveSos(activeSosList[0].id)}
+                  className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-md"
+                >
+                  ✓ Mark as Rescued & Safe
+                </button>
+              </>
             )}
           </div>
         </section>
